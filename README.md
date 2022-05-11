@@ -26,9 +26,10 @@ Built:
 
 ## Features
 
-- Encrypt and decrypt directory with the key of your choosing
+- Encrypt and decrypt directory with the key of your choosing (encrypted files are simply renamed to `[original name].encrypted`)
 
 ## What to expect in further versions
 
 - Encryption for file and directory names
+- Encrypted files goes to a new directory named "encrypted"
 - More options concerning encryption and decryption
