@@ -1,3 +1,5 @@
+#!/usr/bin/node
+
 import commands from "./commands";
 import minimist from "minimist";
 
