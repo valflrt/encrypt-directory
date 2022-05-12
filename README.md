@@ -62,7 +62,7 @@ After encryption:
 
 ### Example file content
 
-> Encrypted using `./build/index.js decrypt -p ./test -k hello`
+> Encrypted using `./build/index.js encrypt -p ./test -k hello`
 
 `hello` (non encrypted)
 
