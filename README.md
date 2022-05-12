@@ -5,7 +5,7 @@ A simple cli program to encrypt a directory and its content, made with nodejs an
 - [Encrypt Directory](#encrypt-directory)
   - [Usage](#usage)
     - [How to build/compile](#how-to-buildcompile)
-    - [Example file trees](#example-file-trees)
+    - [Example](#example)
   - [Features](#features)
   - [What to expect in further versions](#what-to-expect-in-further-versions)
 
@@ -41,25 +41,9 @@ npx ts-node src/index.ts d </directory/to/decrypt> <your key>
 - Use `npm run build` in the project directory to build.
 - Use `npm run build:binary` to create an executable.
 
-### Example file trees
+### Example
 
-Before encryption:
-
-```
-test/
-├── dir
-│   └── bruh
-└── hello
-```
-
-After encryption:
-
-```
-test.encrypted/
-├── J0OWu4Dfw6m-xIfyJICmSdM4LDIH
-└── QWeD11tGkZAKnYLQzityY7Xeqg
-    └── y11mnG_VvveGhOhmAPKCM5UIjWM
-```
+[See example/](./example/)
 
 ## Features
 
