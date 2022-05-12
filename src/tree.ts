@@ -1,6 +1,6 @@
 import { Stats } from "fs";
 import fs from "fs/promises";
-import path, { resolve } from "path";
+import path from "path";
 
 /**
  * Item types
@@ -17,6 +17,7 @@ export enum ItemTypes {
 export interface Item {
   type: ItemTypes.Dir | ItemTypes.File | ItemTypes.Unknown;
   path: string;
+  name: string;
 }
 
 /**
@@ -90,18 +91,21 @@ export class Tree {
             return {
               type: ItemTypes.Dir,
               path: itemPath,
+              name: i.name,
               items: await loopThroughDirectories(itemPath),
             };
           else if (i.isFile())
             return {
               type: ItemTypes.File,
               path: itemPath,
+              name: i.name,
               ext: path.extname(i.name) !== "" ? path.extname(i.name) : null,
             };
           else
             return {
               type: ItemTypes.Unknown,
               path: itemPath,
+              name: i.name,
             };
         })
       );
