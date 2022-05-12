@@ -7,4 +7,4 @@ let args = minimist(process.argv.slice(2));
 
 let command = commands.find((c) => c.matches.some((m) => !!args._.includes(m)));
 
-if (command) command.execute(args);
+(command ? command : commands.find((c) => c.name === "help")!).execute(args);
