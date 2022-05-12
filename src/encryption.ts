@@ -61,24 +61,4 @@ export class Encryption {
 
     return result;
   }
-
-  /**
-   * Reads a file and returns its encrypted content
-   * @param exactPath Path of the file to encrypt
-   */
-  encryptFile(exactPath: string) {
-    let plain = fs.readFileSync(exactPath);
-
-    return this.encrypt(plain);
-  }
-
-  /**
-   * Reads an encrypted file and returns its decrypted content
-   * @param exactPath Path of the file to decrypt
-   */
-  decryptFile(exactPath: string) {
-    let encrypted = fs.readFileSync(exactPath);
-
-    return this.decrypt(encrypted);
-  }
 }
