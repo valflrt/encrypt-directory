@@ -4,46 +4,51 @@ A simple cli program to encrypt a directory and its content, made with nodejs an
 
 - [Encrypt Directory](#encrypt-directory)
   - [Usage](#usage)
-    - [How to build](#how-to-build)
+    - [How to build/compile](#how-to-buildcompile)
     - [Example file trees](#example-file-trees)
-    - [Example file content](#example-file-content)
   - [Features](#features)
   - [What to expect in further versions](#what-to-expect-in-further-versions)
 
 ## Usage
 
-> note: you need to have node and npm installed on your computer
+- **Commands**
+  - `encrypt` or `e`
+    - Encrypts a directory
+    - Options
+      - `--path` or `-p` – required
+        - Path of the directory to encrypt
+      - `--key` or `-k` – required
+        - Key used to encrypt
+  - `decrypt` or `d`
+    - Decrypts an encrypted directory
+    - Options
+      - `--path` or `-p` – required
+        - Path of the encrypted directory to decrypt
+      - `--key` or `-k` – required
+        - Key used to decrypt
 
-Not built:
+Examples:
 
 ```sh
-# encryption
-npx ts-node src/index.ts encrypt -p <./path/to/your/directory> -k <your key>
+# Non-compiled
+npx ts-node src/index.ts encrypt -p </directory/to/encrypt> -k <your key>
+npx ts-node src/index.ts d -p </directory/to/decrypt> -k <your key>
 
-# decryption
-npx ts-node src/index.ts decrypt -p <./path/to/your/directory> -k <your key>
+# Compiled
+./encrypt-directory e -p </directory/to/encrypt> -k <your key>
 ```
 
-Built:
+### How to build/compile
 
-```sh
-# encryption
-./build/index.js encrypt -p <./path/to/your/directory> -k <your key>
-
-# decryption
-./build/index.js decrypt -p <./path/to/your/directory> -k <your key>
-```
-
-### How to build
-
-Use `npm run build` in the project directory
+- Use `npm run build` in the project directory to build.
+- Use `npm run compile` to create an executable.
 
 ### Example file trees
 
 Before encryption:
 
 ```
-./test/
+test/
 ├── dir
 │   └── bruh
 └── hello
@@ -52,36 +57,17 @@ Before encryption:
 After encryption:
 
 ```
-./test/
-├── dir
-│   ├── bruh
-│   └── bruh.encrypted
-├── hello
-└── hello.encrypted
-```
-
-### Example file content
-
-> Encrypted using `./build/index.js encrypt -p ./test -k hello`
-
-`hello` (non encrypted)
-
-```
-hello
-```
-
-`hello.encrypted`
-
-```
-�s��>?�X�q/Px�F��[�
+05lT5Xlv2bxtPpYi72EGFF_4v6s/
+├── J0OWu4Dfw6m-xIfyJICmSdM4LDIH
+└── QWeD11tGkZAKnYLQzityY7Xeqg
+    └── y11mnG_VvveGhOhmAPKCM5UIjWM
 ```
 
 ## Features
 
-- Encrypt and decrypt directory with the key of your choosing (encrypted files are simply renamed to `[original name].encrypted`)
+- Encrypt and decrypt directory with the key of your choosing (file/directory names are also encrypted)
 
 ## What to expect in further versions
 
-- Encryption for file and directory names
-- Encrypted files goes to a new directory named "encrypted"
 - More options concerning encryption and decryption
+- Fancier log
