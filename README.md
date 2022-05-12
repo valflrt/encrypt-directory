@@ -43,7 +43,7 @@ npx ts-node src/index.ts d </directory/to/decrypt> <your key>
 
 ### Example
 
-[See example/](./example/)
+[See example](./example/README.md)
 
 ## Features
 
