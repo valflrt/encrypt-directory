@@ -11,21 +11,19 @@ A simple cli program to encrypt a directory and its content, made with nodejs an
 
 ## Usage
 
-- **Commands**
-  - `encrypt` or `e`
-    - Encrypts a directory
-    - Options
-      - `--path` or `-p` – required
-        - Path of the directory to encrypt
-      - `--key` or `-k` – required
-        - Key used to encrypt
-  - `decrypt` or `d`
-    - Decrypts an encrypted directory
-    - Options
-      - `--path` or `-p` – required
-        - Path of the encrypted directory to decrypt
-      - `--key` or `-k` – required
-        - Key used to decrypt
+```
+  help
+    Displays this help panel
+    Aliases: h
+
+  encrypt <path> <key>
+    Encrypts a directory
+    Aliases: e
+
+  decrypt <path> <key>
+    Decrypts an encrypted directory
+    Aliases: d
+```
 
 Examples:
 
