@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import fs from "fs";
 
 export interface EncryptionOptions {
   key: string;
