@@ -29,11 +29,11 @@ Examples:
 
 ```sh
 # Non-compiled
-npx ts-node src/index.ts encrypt -p </directory/to/encrypt> -k <your key>
-npx ts-node src/index.ts d -p </directory/to/decrypt> -k <your key>
+npx ts-node src/index.ts encrypt </directory/to/encrypt> <your key>
+npx ts-node src/index.ts d </directory/to/decrypt> <your key>
 
 # Compiled
-./encrypt-directory e -p </directory/to/encrypt> -k <your key>
+./encrypt-directory e </directory/to/encrypt> <your key>
 ```
 
 ### How to build/compile
@@ -55,7 +55,7 @@ test/
 After encryption:
 
 ```
-05lT5Xlv2bxtPpYi72EGFF_4v6s/
+test.encrypted/
 ├── J0OWu4Dfw6m-xIfyJICmSdM4LDIH
 └── QWeD11tGkZAKnYLQzityY7Xeqg
     └── y11mnG_VvveGhOhmAPKCM5UIjWM
