@@ -45,7 +45,9 @@ let decrypt: Command = {
     });
     if (!dir) return console.error("Failed to read directory !");
 
-    let decryptedDirPath = resolvedDirPath.replace(".encrypted", "");
+    let decryptedDirPath = resolvedDirPath
+      .replace(".encrypted", "")
+      .concat(".decrypted");
     if (fs.existsSync(decryptedDirPath))
       return console.error(
         `Error: The decrypted directory already exists. Please delete it and try again.\n(path: ${decryptedDirPath})`
