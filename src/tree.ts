@@ -1,5 +1,4 @@
-import { Stats } from "fs";
-import fs from "fs/promises";
+import fs from "fs";
 import path from "path";
 
 /**
@@ -58,56 +57,42 @@ export class Tree {
   }
 
   /**
-   * Returns true or false wether the path leads to a directory
-   */
-  private get _stat() {
-    return new Promise<Stats>(async (resolve, reject) => {
-      try {
-        resolve(await fs.stat(this._path));
-      } catch (e) {
-        reject();
-      }
-    });
-  }
-
-  /**
    * Returns an object representation of the tree
    */
   public async toObject() {
-    let itemStat = await this._stat;
-    if (itemStat.isFile()) return null;
+    if (fs.statSync(this._path).isFile()) return null;
 
     let loopThroughDirectories = async (
       dirPath: string
     ): Promise<ItemArray> => {
       return await Promise.all(
-        (
-          await fs.readdir(dirPath, {
+        fs
+          .readdirSync(dirPath, {
             withFileTypes: true,
           })
-        ).map(async (i) => {
-          let itemPath = path.join(dirPath, i.name);
-          if (i.isDirectory())
-            return {
-              type: ItemTypes.Dir,
-              path: itemPath,
-              name: i.name,
-              items: await loopThroughDirectories(itemPath),
-            };
-          else if (i.isFile())
-            return {
-              type: ItemTypes.File,
-              path: itemPath,
-              name: i.name,
-              ext: path.extname(i.name) !== "" ? path.extname(i.name) : null,
-            };
-          else
-            return {
-              type: ItemTypes.Unknown,
-              path: itemPath,
-              name: i.name,
-            };
-        })
+          .map(async (i) => {
+            let itemPath = path.join(dirPath, i.name);
+            if (i.isDirectory())
+              return {
+                type: ItemTypes.Dir,
+                path: itemPath,
+                name: i.name,
+                items: await loopThroughDirectories(itemPath),
+              };
+            else if (i.isFile())
+              return {
+                type: ItemTypes.File,
+                path: itemPath,
+                name: i.name,
+                ext: path.extname(i.name) !== "" ? path.extname(i.name) : null,
+              };
+            else
+              return {
+                type: ItemTypes.Unknown,
+                path: itemPath,
+                name: i.name,
+              };
+          })
       );
     };
 
