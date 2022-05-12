@@ -5,7 +5,7 @@
   "bin": "build/index.js",
   "scripts": {
     "build": "rm -rf build && npx tsc",
-    "compile": "npm run build && npx pkg ."
+    "build:binary": "npm run build && npx pkg ."
   },
   "author": "valflrt",
   "license": "ISC",
@@ -24,7 +24,9 @@
   },
   "pkg": {
     "targets": [
-      "node16"
-    ]
+      "node16-linux-x64",
+      "node16-win-x64"
+    ],
+    "outputPath": "binaries"
   }
 }
