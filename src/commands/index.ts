@@ -8,22 +8,17 @@ import help from "./help";
  */
 export interface Command {
   name: string;
-  matches: string[];
+  aliases: string[];
+  description: string;
+  arguments?: {
+    name: string;
+    description?: string;
+    required?: boolean;
+  }[];
+  options?: { name: string; aliases?: string[]; description?: string }[];
   execute: () => any;
 }
 
-/**
- * Command array
- */
-let commands: Command[] = [];
-
-// Command `help`
-commands.push(help);
-
-// Command `encrypt`
-commands.push(encrypt);
-
-// Command `decrypt`
-commands.push(decrypt);
+let commands: Command[] = [help, encrypt, decrypt];
 
 export default commands;
