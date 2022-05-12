@@ -1,5 +1,5 @@
-This was generated using:
+This was used for this example:
 
 ```sh
-./binaries/encrypt-directory-linux e ./example/test/ hello
+../binaries/encrypt-directory-linux e ./example/test/ hello
 ```
