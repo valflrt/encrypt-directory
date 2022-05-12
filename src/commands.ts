@@ -1,15 +1,18 @@
-import minimist from "minimist";
 import fs from "fs/promises";
 import path from "path";
 
 import { Encryption } from "./encryption";
 import { ItemArray, ItemTypes, Tree } from "./tree";
-import { tryCatch } from "./utils";
+import {
+  getArgs,
+  loopThroughDirToFindNumberOfEntries,
+  tryCatch,
+} from "./utils";
 
 export interface Command {
   name: string;
   matches: string[];
-  execute: (args: minimist.ParsedArgs) => any;
+  execute: () => any;
 }
 
 let commands: Command[] = [];
@@ -25,7 +28,9 @@ commands.push({
 commands.push({
   name: "encrypt",
   matches: ["encrypt", "e"],
-  execute: async (args) => {
+  execute: async () => {
+    let args = getArgs();
+
     let resolvedDirPath = tryCatch(
       () => path.resolve(args["path"] ?? args["p"]),
       (e) => {
@@ -51,7 +56,9 @@ commands.push({
     console.log("Reading directory...");
     let dir = await new Tree(resolvedDirPath).toObject();
     if (!dir) return console.log("Failed to read directory !");
-    console.log(`Found ${dir} items.`);
+    console.log(
+      `Found ${loopThroughDirToFindNumberOfEntries(dir.items)} items.`
+    );
 
     let parsedDirPath = path.parse(resolvedDirPath);
     let encryptedDirPath = path.join(
@@ -60,26 +67,26 @@ commands.push({
     );
 
     try {
-      fs.mkdir(encryptedDirPath);
+      await fs.mkdir(encryptedDirPath);
     } catch (e) {
       if (args["debug"]) console.log(e);
     }
 
-    let loopThroughDir = (items: ItemArray, itemPath: string) => {
-      items.map((i) => {
-        itemPath = path.join(
-          itemPath,
+    let loopThroughDir = (items: ItemArray, parentPath: string): void => {
+      items.map(async (i) => {
+        let itemPath = path.join(
+          parentPath,
           encryption.encrypt(Buffer.from(i.name)).toString("base64url")
         );
         if (i.type === ItemTypes.Dir) {
           try {
-            fs.mkdir(i.path);
+            await fs.mkdir(itemPath);
           } catch (e) {
             if (args["debug"]) console.log(e);
           }
           loopThroughDir(i.items, itemPath);
         } else {
-          fs.writeFile(itemPath, encryption.encryptFile(i.path));
+          await fs.writeFile(itemPath, encryption.encryptFile(i.path));
         }
       });
     };
@@ -92,7 +99,9 @@ commands.push({
 commands.push({
   name: "decrypt",
   matches: ["decrypt", "d"],
-  execute: async (args) => {
+  execute: async () => {
+    let args = getArgs();
+
     let resolvedDirPath = tryCatch(
       () => path.resolve(args["path"] ?? args["p"]),
       (e) => {
@@ -113,21 +122,14 @@ commands.push({
     );
     if (!key) return;
 
+    let encryption = new Encryption(key);
+
     console.log("Reading directory...");
     let dir = await new Tree(resolvedDirPath).toObject();
     if (!dir) return console.log("Failed to read directory !");
-    console.log(`Found ${dir} items.`);
-
-    /*
-
-    tree.forEach((i) => {
-      fs.writeFile(
-        i.path.replace(".encrypted", ""),
-        encryption.decryptFile(i.path)
-      );
-    }); */
-
-    let encryption = new Encryption(key);
+    console.log(
+      `Found ${loopThroughDirToFindNumberOfEntries(dir.items)} items.`
+    );
 
     let parsedDirPath = path.parse(resolvedDirPath);
     let decryptedDirPath = path.join(
@@ -138,26 +140,26 @@ commands.push({
     );
 
     try {
-      fs.mkdir(decryptedDirPath);
+      await fs.mkdir(decryptedDirPath);
     } catch (e) {
       if (args["debug"]) console.log(e);
     }
 
-    let loopThroughDir = (items: ItemArray, itemPath: string) => {
-      items.map((i) => {
-        itemPath = path.join(
-          itemPath,
+    let loopThroughDir = (items: ItemArray, parentPath: string) => {
+      items.map(async (i) => {
+        let itemPath = path.join(
+          parentPath,
           encryption.decrypt(Buffer.from(i.name, "base64url")).toString()
         );
         if (i.type === ItemTypes.Dir) {
           try {
-            fs.mkdir(i.path);
+            await fs.mkdir(itemPath);
           } catch (e) {
             if (args["debug"]) console.log(e);
           }
           loopThroughDir(i.items, itemPath);
         } else {
-          fs.writeFile(itemPath, encryption.decryptFile(i.path));
+          await fs.writeFile(itemPath, encryption.decryptFile(i.path));
         }
       });
     };
