@@ -1,39 +1,44 @@
-import fs from "fs/promises";
+import fs from "fs";
+import fsPromises from "fs/promises";
 import path from "path";
 
 import { Encryption } from "../encryption";
 import { ItemArray, ItemTypes, Tree } from "../tree";
-import {
-  getArgs,
-  loopThroughDirToFindNumberOfEntries,
-  tryCatch,
-} from "../utils";
+import { getArgs, tryCatch } from "../utils";
+import { loopThroughDirToFindNumberOfEntries } from "../misc";
 
-export default {
+import { Command } from ".";
+
+let encrypt: Command = {
   name: "encrypt",
-  matches: ["encrypt", "e"],
+  aliases: ["e"],
+  description: "Encrypts a directory",
+  arguments: [
+    { name: "path", description: "Path of the directory to encrypt" },
+    {
+      name: "key",
+      description: "Key used to encrypt",
+    },
+  ],
+
   execute: async () => {
     let args = getArgs();
 
     let resolvedDirPath = tryCatch(
-      () => path.resolve(args["path"] ?? args["p"]),
+      () => path.resolve(args._[1]),
       (e) => {
         if (args["debug"]) console.log(e);
-        console.log("You need to specify a proper path !");
+        console.error("You need to specify a proper path !");
       }
     );
     if (!resolvedDirPath) return;
+    if (!fs.existsSync(resolvedDirPath))
+      return console.error(
+        `The item pointed by this path doesn't exist !\n(path: ${resolvedDirPath})`
+      );
 
-    let key = tryCatch(
-      () => path.resolve(args["key"] ?? args["k"]),
-      (e) => {
-        if (args["debug"]) console.log(e);
-        console.log(
-          "You need to specify a key a proper to encrypt the files with !"
-        );
-      }
-    );
-    if (!key) return;
+    let key = args._[2];
+    if (!key) return console.error("You need to specify a proper key !");
 
     let encryption = new Encryption(key);
 
@@ -43,50 +48,61 @@ export default {
       console.log("Failed to read directory !");
     });
     if (!dir) return console.log("Failed to read directory !");
+
+    let encryptedDirPath = resolvedDirPath.concat(".encrypted");
+    if (fs.existsSync(encryptedDirPath))
+      return console.error(
+        `Error: The encrypted directory already exists. Please delete it and try again.\n(path: ${encryptedDirPath})`
+      );
+
+    fsPromises
+      .mkdir(encryptedDirPath)
+      .catch((e) =>
+        console.error(`Error while creating base directory:\n${e}`)
+      );
+
     console.log(
       `Found ${loopThroughDirToFindNumberOfEntries(dir.items)} items.`
     );
 
-    let parsedDirPath = path.parse(resolvedDirPath);
-    let encryptedDirPath = path.join(
-      parsedDirPath.dir,
-      encryption.encrypt(Buffer.from(parsedDirPath.base)).toString("base64url")
-    );
-
-    try {
-      await fs.mkdir(encryptedDirPath);
-    } catch (e) {
-      if (args["debug"]) console.log(e);
-    }
-
-    let loopThroughDir = (items: ItemArray, parentPath: string) => {
-      return Promise.all(
+    let loopThroughDir = async (items: ItemArray, parentPath: string) => {
+      await Promise.all(
         items.map(async (i) => {
           let newItemPath = path.join(
             parentPath,
             encryption.encrypt(Buffer.from(i.name)).toString("base64url")
           );
           if (i.type === ItemTypes.Dir) {
-            try {
-              await fs.mkdir(newItemPath);
-            } catch (e) {
-              if (args["debug"]) console.log(e);
-            }
-            loopThroughDir(i.items, newItemPath);
+            await fsPromises
+              .mkdir(newItemPath)
+              .then(() => loopThroughDir(i.items, newItemPath))
+              .catch((e) => {
+                throw e;
+              });
           } else {
-            await fs.writeFile(
-              newItemPath,
-              encryption
-                .encrypt(await fs.readFile(i.path))
-                .toString("base64url"),
-              "utf8"
-            );
+            await fsPromises
+              .writeFile(
+                newItemPath,
+                encryption
+                  .encrypt(fs.readFileSync(i.path))
+                  .toString("base64url"),
+                "utf8"
+              )
+              .catch((e) => {
+                throw e;
+              });
           }
         })
       );
     };
-    await loopThroughDir(dir.items, encryptedDirPath);
+    try {
+      await loopThroughDir(dir.items, encryptedDirPath);
+    } catch (e) {
+      return console.error(`Error while encrypting:\n${e}`);
+    }
 
     console.log("Done.");
   },
 };
+
+export default encrypt;
