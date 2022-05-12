@@ -4,6 +4,8 @@ import path from "path";
 
 import { Encryption } from "../encryption";
 import { ItemArray, ItemTypes, Tree } from "../tree";
+
+import { FrameTypes, Loader } from "../loader";
 import { getArgs, tryCatch } from "../utils";
 import { loopThroughDirToFindNumberOfEntries } from "../misc";
 
@@ -96,7 +98,11 @@ let encrypt: Command = {
       );
     };
     try {
-      await loopThroughDir(dir.items, encryptedDirPath);
+      let loader = new Loader(FrameTypes.Type0);
+      loader.start();
+      await loopThroughDir(dir.items, encryptedDirPath).then(() =>
+        loader.stop()
+      );
     } catch (e) {
       return console.error(`Error while encrypting:\n${e}`);
     }
