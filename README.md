@@ -39,7 +39,7 @@ npx ts-node src/index.ts d </directory/to/decrypt> <your key>
 ### How to build/compile
 
 - Use `npm run build` in the project directory to build.
-- Use `npm run build:binary` to create an executable.
+- Use `npm run build:binaries` to generate the binaries.
 
 ### Example
 
