@@ -1,12 +1,6 @@
 #!/usr/bin/node
 
-import commands from "./commands";
-import { getArgs } from "./utils";
+import "./commands";
+import program from "./program";
 
-let args = getArgs();
-
-let command = commands.find(
-  (c) => args._[0] === c.name || c.aliases.some((m) => args._[0] === m)
-);
-
-(command ? command : commands.find((c) => c.name === "help")!).execute();
+program.parse(process.argv);
