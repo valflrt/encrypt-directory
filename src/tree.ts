@@ -166,4 +166,18 @@ export class Tree {
 
     return flatArray ?? null;
   }
+
+  /**
+   * Returns the number of entries in the given Dir object
+   * @param dir Dir object
+   */
+  public static getNumberOfEntries(dir: Dir): number {
+    let loopThroughItems = (items: ItemArray): number =>
+      items.reduce<number>((acc, i) => {
+        if (i.type === ItemTypes.Dir) {
+          return acc + loopThroughItems(i.items);
+        } else return acc + 1;
+      }, 0);
+    return loopThroughItems(dir.items);
+  }
 }
