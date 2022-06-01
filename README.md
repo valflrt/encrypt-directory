@@ -1,8 +1,8 @@
-# Encrypt Directory
+# crypto-vault
 
 A simple cli program to encrypt a directory and its content, made with nodejs and typescript.
 
-- [Encrypt Directory](#encrypt-directory)
+- [crypto-vault](#crypto-vault)
   - [Usage](#usage)
     - [How to build/compile](#how-to-buildcompile)
     - [Example](#example)
@@ -12,17 +12,18 @@ A simple cli program to encrypt a directory and its content, made with nodejs an
 ## Usage
 
 ```
-  help
-    Displays this help panel
-    Aliases: h
+Usage: crypto-vault [options] [command]
 
-  encrypt <path> <key>
-    Encrypts a directory
-    Aliases: e
+simple encryption and decryption tool.
 
-  decrypt <path> <key>
-    Decrypts an encrypted directory
-    Aliases: d
+Options:
+  -V, --version                     output the version number
+  -h, --help                        display help for command
+
+Commands:
+  decrypt|d [options] <path> <key>  decrypts an encrypted file/directory
+  encrypt|e [options] <path> <key>  encrypts a file/directory
+  help [command]                    display help for command
 ```
 
 Examples:
@@ -39,7 +40,7 @@ npx ts-node src/index.ts d </directory/to/decrypt> <your key>
 ### How to build/compile
 
 - Use `npm run build` in the project directory to build.
-- Use `npm run build:binary` to create an executable.
+- Use `npm run build:binaries` to create an executable.
 
 ### Example
 
