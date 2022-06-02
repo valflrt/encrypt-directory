@@ -24,23 +24,26 @@ export default program
     "custom compression level (1-9)",
     "4"
   )
-  .option("-D, --debug", "debug mode")
+  .option("--verbose", "verbose mode")
+  .option("--debug", "debug mode")
   .action(async (path, key, options) => {
+    if (options.debug) console.log("given options:", options);
+
     try {
       // Resolves the given path
       let resolvedItemPath;
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
-        if (options.debug) console.log(e);
-        program.error("error: Invalid path !");
+        if (options.debug) console.error(e);
+        program.error("Error: Invalid path !");
         return;
       }
 
       // Checks if the item exists
       if (!existsSync(resolvedItemPath)) {
         program.error(
-          `error: The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
+          `Error: The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
         );
         return;
       }
@@ -48,6 +51,16 @@ export default program
       // Creates an Encryption instance
       let encryption = new Encryption(key);
 
+      // Custom decrypt function changing depending on options
+      let decrypt = async (buffer: Buffer) => {
+        return options.compression
+          ? await ungzip(encryption.decrypt(buffer), {
+              level: Number.parseInt(options.compressionLevel),
+            })
+          : encryption.decrypt(buffer);
+      };
+
+      // Check if the item is a directory, a file or something else
       let itemStats = await fs.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
         console.log("Reading directory...");
@@ -57,12 +70,12 @@ export default program
         try {
           dir = await new Tree(resolvedItemPath).toObject();
           if (dir === null) {
-            program.error("error: Failed to read directory !");
+            program.error("Error: Failed to read directory !");
             return;
           }
         } catch (e) {
-          if (options.debug) console.log(e);
-          program.error("error: Failed to read directory !");
+          if (options.debug) console.error(e);
+          program.error("Error: Failed to read directory !");
           return;
         }
 
@@ -73,7 +86,7 @@ export default program
             : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
           if (options.debug) console.error(e);
-          program.error("error: Failed to resolve given output path");
+          program.error("Error: Failed to resolve given output path");
           return;
         }
         // Checks if the "decrypted" directory already exists
@@ -88,8 +101,8 @@ export default program
         try {
           await fs.mkdir(outputPath);
         } catch (e) {
-          if (options.debug) console.log(e);
-          program.error(`error: Failed to create base directory`);
+          if (options.debug) console.error(e);
+          program.error("Error: Failed to create base directory");
           return;
         }
 
@@ -102,41 +115,24 @@ export default program
             items.map(async (i) => {
               let newItemPath = pathProgram.join(
                 parentPath,
-                (options.compression
-                  ? await ungzip(
-                      encryption.decrypt(Buffer.from(i.name, "base64url")),
-                      {
-                        level: Number.parseInt(options.compressionLevel),
-                      }
-                    )
-                  : encryption.decrypt(Buffer.from(i.name, "base64url"))
-                ).toString()
+                (await decrypt(Buffer.from(i.name, "base64url"))).toString()
               );
 
               if (i.type === ItemTypes.Dir) {
                 await fs.mkdir(newItemPath, { recursive: true });
                 loopThroughDir(i.items, newItemPath);
-              } else {
+              } else if (i.type === ItemTypes.File) {
+                if (options.verbose)
+                  console.log(
+                    "- decrypting file\n"
+                      .concat(`  from "${i.path}"\n`)
+                      .concat(`  to "${newItemPath}"`)
+                  );
                 await fs.writeFile(
                   newItemPath,
-                  options.compression
-                    ? await ungzip(
-                        encryption.decrypt(
-                          Buffer.from(
-                            await fs.readFile(i.path, "utf8"),
-                            "base64url"
-                          )
-                        ),
-                        {
-                          level: Number.parseInt(options.compressionLevel),
-                        }
-                      )
-                    : encryption.decrypt(
-                        Buffer.from(
-                          await fs.readFile(i.path, "utf8"),
-                          "base64url"
-                        )
-                      )
+                  await decrypt(
+                    Buffer.from(await fs.readFile(i.path, "utf8"), "base64url")
+                  )
                 );
               }
             })
@@ -146,7 +142,7 @@ export default program
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Decrypting directory...",
-          now: true,
+          manualStart: options.verbose ? true : false,
         });
 
         try {
@@ -156,7 +152,7 @@ export default program
           loader.stop();
           if (options.debug) console.error(e);
           program.error(
-            `error: Error while decrypting\n`.concat(
+            "Error: Error while decrypting\n".concat(
               "(The directory you are trying to decrypt might not be a valid encrypted directory)"
             )
           );
@@ -171,36 +167,31 @@ export default program
             : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
           if (options.debug) console.error(e);
-          program.error("error: Failed to resolve given output path");
+          program.error("Error: Failed to resolve given output path");
           return;
         }
 
+        if (options.verbose)
+          console.log(
+            "- encrypting file\n"
+              .concat(`  from "${resolvedItemPath}"\n`)
+              .concat(`  to "${newItemPath}"`)
+          );
+
         // Loading animation
         let loader = new Loader({
-          text: "[loader]  Decrypting file...",
-          now: true,
+          text: "[loader]  Decrypting file...\n",
+          manualStart: options.verbose ? true : false,
         });
-
-        await new Promise((r) => setTimeout(r, 5e3));
 
         try {
           await fs.writeFile(
             newItemPath,
-            encryption.decrypt(
-              options.compression
-                ? await ungzip(
-                    Buffer.from(
-                      await fs.readFile(resolvedItemPath, "utf8"),
-                      "base64url"
-                    ),
-                    {
-                      level: Number.parseInt(options.compressionLevel),
-                    }
-                  )
-                : Buffer.from(
-                    await fs.readFile(resolvedItemPath, "utf8"),
-                    "base64url"
-                  )
+            await decrypt(
+              Buffer.from(
+                await fs.readFile(resolvedItemPath, "utf8"),
+                "base64url"
+              )
             )
           );
           loader.stop();
@@ -208,7 +199,7 @@ export default program
           loader.stop();
           if (options.debug) console.error(e);
           program.error(
-            `error: Error while decrypting\n`.concat(
+            "Error: Error while decrypting\n".concat(
               "(The file you are trying to decrypt might not be a valid encrypted file)"
             )
           );
@@ -216,16 +207,16 @@ export default program
         }
       } else {
         program.error(
-          "error: This program only supports files and directories"
+          "Error: This program only supports files and directories"
         );
         return;
       }
 
       console.log("Done");
     } catch (e) {
-      if (options.debug) console.log(e);
+      if (options.debug) console.error(e);
       program.error(
-        "error: Unknown error occurred (rerun with --debug for debug information)"
+        "Error: Unknown error occurred (rerun with --debug for debug information)"
       );
       return;
     }
