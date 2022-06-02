@@ -15,8 +15,8 @@ export class Loader {
 
   constructor(options: {
     /**
-     * The text to add the loader in
-     * (example: "hello [loader] !")
+     * Text to display while the loader is running
+     * @example hello [loader] !
      */
     text?: `${string}[loader]${string}`;
     /**
@@ -24,13 +24,14 @@ export class Loader {
      */
     frameType?: LoaderStyles;
     /**
-     * Whether to start the loader now or not
+     * Turns on manual mode
      */
-    now?: boolean;
+    manualStart?: boolean;
   }) {
     this._frames = availableStyles[options?.frameType ?? LoaderStyles.Type0];
-    this._text = options.text ? options.text : null;
-    if (options.now) this.start();
+    this._text = options.text ?? null;
+
+    if (!options.manualStart) this.start();
   }
 
   /**
