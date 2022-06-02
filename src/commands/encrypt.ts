@@ -10,6 +10,7 @@ import { Encryption } from "../encryption";
 import { ItemArray, ItemTypes, Tree } from "../tree";
 
 import { Loader } from "../loader";
+import Logger from "../logger";
 
 export default program
   .command("encrypt")
@@ -24,22 +25,26 @@ export default program
     "custom compression level (1-9)",
     "4"
   )
-  .option("--verbose", "verbose mode")
-  .option("--debug", "debug mode")
-  .action(async (path, key, options) => {
+  .action(async (path, key, options, cmd) => {
+    let logger = new Logger(cmd.optsWithGlobals());
+
+    logger.info("Given options:", cmd.optsWithGlobals());
+
     try {
       // Resolves the given path
       let resolvedItemPath;
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
-        if (options.debug) console.error(e);
-        program.error("Error: Invalid path !");
+        if (cmd.optsWithGlobals().debug) console.error(e);
+        logger.error("Invalid path !");
+        process.exit(0);
         return;
       }
 
       // Checks if the item exists
       if (!existsSync(resolvedItemPath)) {
+        // TODO: replace
         program.error(
           `Error: The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
         );
@@ -70,12 +75,12 @@ export default program
         try {
           dir = await new Tree(resolvedItemPath).toObject();
           if (dir === null) {
-            program.error("Error: Failed to read directory !");
+            program.error("Failed to read directory !");
             return;
           }
         } catch (e) {
-          if (options.debug) console.error(e);
-          program.error("Error: Failed to read directory !");
+          if (cmd.optsWithGlobals().debug) console.error(e);
+          program.error("Failed to read directory !");
           return;
         }
 
@@ -85,8 +90,8 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.concat(".encrypted");
         } catch (e) {
-          if (options.debug) console.error(e);
-          program.error("Error: Failed to resolve given output path");
+          if (cmd.optsWithGlobals().debug) console.error(e);
+          program.error("Failed to resolve given output path");
           return;
         }
         // Checks if the "encrypted" directory already exists
@@ -101,8 +106,8 @@ export default program
         try {
           await fs.mkdir(outputPath);
         } catch (e) {
-          if (options.debug) console.error(e);
-          program.error("Error: Failed to create base directory");
+          if (cmd.optsWithGlobals().debug) console.error(e);
+          program.error("Failed to create base directory");
           return;
         }
 
@@ -123,7 +128,7 @@ export default program
                 await fs.mkdir(newItemPath);
                 loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
-                if (options.verbose)
+                if (cmd.optsWithGlobals().verbose)
                   console.log(
                     "- encrypting file\n"
                       .concat(`  from "${i.path}"\n`)
@@ -144,14 +149,14 @@ export default program
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Encrypting directory...",
-          manualStart: options.verbose ? true : false,
+          manualStart: cmd.optsWithGlobals().verbose ? true : false,
         });
 
         try {
           await loopThroughDir(dir.items, outputPath);
           loader.stop();
         } catch (e) {
-          if (options.debug) console.error(e);
+          if (cmd.optsWithGlobals().debug) console.error(e);
           program.error("Error while encrypting");
           return;
         }
@@ -163,12 +168,12 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.concat(".encrypted");
         } catch (e) {
-          if (options.debug) console.error(e);
-          program.error("Error: Failed to resolve given output path");
+          if (cmd.optsWithGlobals().debug) console.error(e);
+          program.error("Failed to resolve given output path");
           return;
         }
 
-        if (options.verbose)
+        if (cmd.optsWithGlobals().verbose)
           console.log(
             "- encrypting file\n"
               .concat(`  from "${resolvedItemPath}"\n`)
@@ -178,7 +183,7 @@ export default program
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Encrypting file...",
-          manualStart: options.verbose ? true : false,
+          manualStart: cmd.optsWithGlobals().verbose ? true : false,
         });
 
         try {
@@ -192,22 +197,20 @@ export default program
           loader.stop();
         } catch (e) {
           loader.stop();
-          if (options.debug) console.error(e);
-          program.error("Error: Error while encrypting");
+          if (cmd.optsWithGlobals().debug) console.error(e);
+          program.error("Error while encrypting");
           return;
         }
       } else {
-        program.error(
-          "Error: This program only supports files and directories"
-        );
+        program.error("This program only supports files and directories");
         return;
       }
 
       console.log("Done");
     } catch (e) {
-      if (options.debug) console.error(e);
+      if (cmd.optsWithGlobals().debug) console.error(e);
       program.error(
-        "Error: Unknown error occurred (rerun with --debug for debug information)"
+        "Unknown error occurred (rerun with --debug for debug information)"
       );
       return;
     }
