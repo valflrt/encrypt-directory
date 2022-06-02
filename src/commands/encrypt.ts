@@ -1,114 +1,210 @@
-import fs from "fs";
-import fsPromises from "fs/promises";
-import path from "path";
+import program from "../program";
+
+import { gzip } from "node-gzip";
+
+import fs from "fs/promises";
+import { existsSync } from "fs";
+import pathProgram from "path";
 
 import { Encryption } from "../encryption";
 import { ItemArray, ItemTypes, Tree } from "../tree";
 
-import { FrameTypes, Loader } from "../loader";
-import { getArgs, tryCatch } from "../utils";
-import { loopThroughDirToFindNumberOfEntries } from "../misc";
+import { Loader } from "../loader";
 
-import { Command } from ".";
-
-let encrypt: Command = {
-  name: "encrypt",
-  aliases: ["e"],
-  description: "Encrypts a directory",
-  arguments: [
-    { name: "path", description: "Path of the directory to encrypt" },
-    {
-      name: "key",
-      description: "Key used to encrypt",
-    },
-  ],
-
-  execute: async () => {
-    let args = getArgs();
-
-    let resolvedDirPath = tryCatch(
-      () => path.resolve(args._[1]),
-      (e) => {
-        if (args["debug"]) console.log(e);
-        console.error("You need to specify a proper path !");
-      }
-    );
-    if (!resolvedDirPath) return;
-    if (!fs.existsSync(resolvedDirPath))
-      return console.error(
-        `The item pointed by this path doesn't exist !\n(path: ${resolvedDirPath})`
-      );
-
-    let key = args._[2];
-    if (!key) return console.error("You need to specify a proper key !");
-
-    let encryption = new Encryption(key);
-
-    console.log("Reading directory...");
-    let dir = await new Tree(resolvedDirPath).toObject().catch((e) => {
-      if (args["debug"]) console.log(e);
-      console.log("Failed to read directory !");
-    });
-    if (!dir) return console.log("Failed to read directory !");
-
-    let encryptedDirPath = resolvedDirPath.concat(".encrypted");
-    if (fs.existsSync(encryptedDirPath))
-      return console.error(
-        `Error: The encrypted directory already exists. Please delete it and try again.\n(path: ${encryptedDirPath})`
-      );
-
-    fsPromises
-      .mkdir(encryptedDirPath)
-      .catch((e) =>
-        console.error(`Error while creating base directory:\n${e}`)
-      );
-
-    console.log(
-      `Found ${loopThroughDirToFindNumberOfEntries(dir.items)} items.`
-    );
-
-    let loopThroughDir = async (items: ItemArray, parentPath: string) => {
-      await Promise.all(
-        items.map(async (i) => {
-          let newItemPath = path.join(
-            parentPath,
-            encryption.encrypt(Buffer.from(i.name)).toString("base64url")
-          );
-          if (i.type === ItemTypes.Dir) {
-            await fsPromises
-              .mkdir(newItemPath)
-              .then(() => loopThroughDir(i.items, newItemPath))
-              .catch((e) => {
-                throw e;
-              });
-          } else {
-            await fsPromises
-              .writeFile(
-                newItemPath,
-                encryption
-                  .encrypt(fs.readFileSync(i.path))
-                  .toString("base64url"),
-                "utf8"
-              )
-              .catch((e) => {
-                throw e;
-              });
-          }
-        })
-      );
-    };
+export default program
+  .command("encrypt")
+  .aliases(["e"])
+  .description("encrypts a file/directory")
+  .argument("<path>", "path of the file/directory to encrypt")
+  .argument("<key>", "key used to encrypt")
+  .option("-o, --output [path]", "path of the output directory or file")
+  .option("--no-compression", "do not use compression")
+  .option(
+    "--compression-level [compression level]",
+    "custom compression level (1-9)",
+    "4"
+  )
+  .option("-D, --debug", "debug mode")
+  .action(async (path, key, options) => {
     try {
-      let loader = new Loader(FrameTypes.Type0);
-      loader.start();
-      await loopThroughDir(dir.items, encryptedDirPath).then(() =>
-        loader.stop()
-      );
+      // Resolves the given path
+      let resolvedItemPath;
+      try {
+        resolvedItemPath = pathProgram.resolve(path);
+      } catch (e) {
+        if (options.debug) console.log(e);
+        program.error("error: Invalid path !");
+        return;
+      }
+
+      // Checks if the item exists
+      if (!existsSync(resolvedItemPath)) {
+        program.error(
+          `error: The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
+        );
+        return;
+      }
+
+      // Creates an Encryption instance
+      let encryption = new Encryption(key);
+
+      let itemStats = await fs.stat(resolvedItemPath);
+      if (itemStats.isDirectory()) {
+        console.log("Reading directory...");
+
+        // Generates directory tree
+        let dir;
+        try {
+          dir = await new Tree(resolvedItemPath).toObject();
+          if (dir === null) {
+            program.error("error: Failed to read directory !");
+            return;
+          }
+        } catch (e) {
+          if (options.debug) console.log(e);
+          program.error("error: Failed to read directory !");
+          return;
+        }
+
+        let outputPath;
+        try {
+          outputPath = options.output
+            ? pathProgram.resolve(options.output)
+            : resolvedItemPath.concat(".encrypted");
+        } catch (e) {
+          if (options.debug) console.error(e);
+          program.error("error: Failed to resolve given output path");
+          return;
+        }
+        // Checks if the "encrypted" directory already exists
+        if (existsSync(outputPath)) {
+          program.error(
+            `error: The encrypted directory already exists. Please delete it and try again.\n(path: ${outputPath})`
+          );
+          return;
+        }
+
+        // Creates base directory (typically [name of the dir to encrypt].encrypted)
+        try {
+          await fs.mkdir(outputPath);
+        } catch (e) {
+          if (options.debug) console.log(e);
+          program.error(`error: Failed to create base directory`);
+          return;
+        }
+
+        // Counts number of items in the directory
+        console.log(`Found ${Tree.getNumberOfEntries(dir)} items.`);
+
+        // Recursion function to encrypt each file in the directory
+        let loopThroughDir = async (items: ItemArray, parentPath: string) => {
+          await Promise.all(
+            items.map(async (i) => {
+              // Creates item path
+              let newItemPath = pathProgram.join(
+                parentPath,
+                encryption
+                  .encrypt(
+                    options.compression
+                      ? await gzip(Buffer.from(i.name), {
+                          level: Number.parseInt(options.compressionLevel),
+                        })
+                      : Buffer.from(i.name)
+                  )
+                  .toString("base64url")
+              );
+
+              if (i.type === ItemTypes.Dir) {
+                await fs.mkdir(newItemPath);
+                loopThroughDir(i.items, newItemPath);
+              } else {
+                await fs.writeFile(
+                  newItemPath,
+                  encryption
+                    .encrypt(
+                      options.compression
+                        ? await gzip(await fs.readFile(i.path), {
+                            level: Number.parseInt(options.compressionLevel),
+                          })
+                        : await fs.readFile(i.path)
+                    )
+                    .toString("base64url"),
+                  "utf8"
+                );
+              }
+            })
+          );
+        };
+
+        console.log("Encrypting directory...");
+
+        // Loading animation
+        let loader = new Loader({
+          text: "[loader]  Encrypting directory...",
+          now: true,
+        });
+
+        try {
+          await loopThroughDir(dir.items, outputPath);
+          loader.stop();
+        } catch (e) {
+          if (options.debug) console.error(e);
+          program.error(`Error while encrypting`);
+          return;
+        }
+      } else if (itemStats.isFile()) {
+        // Creates output path
+        let newItemPath;
+        try {
+          newItemPath = options.output
+            ? pathProgram.resolve(options.output)
+            : resolvedItemPath.concat(".encrypted");
+        } catch (e) {
+          if (options.debug) console.error(e);
+          program.error("error: Failed to resolve given output path");
+          return;
+        }
+
+        // Loading animation
+        let loader = new Loader({
+          text: "[loader]  Encrypting file...",
+          now: true,
+        });
+
+        try {
+          await fs.writeFile(
+            newItemPath,
+            encryption
+              .encrypt(
+                options.compression
+                  ? await gzip(await fs.readFile(resolvedItemPath), {
+                      level: Number.parseInt(options.compressionLevel),
+                    })
+                  : await fs.readFile(resolvedItemPath)
+              )
+              .toString("base64url"),
+            "utf8"
+          );
+          loader.stop();
+        } catch (e) {
+          loader.stop();
+          if (options.debug) console.error(e);
+          program.error(`Error while encrypting`);
+          return;
+        }
+      } else {
+        program.error(
+          "error: This program only supports files and directories"
+        );
+        return;
+      }
+
+      console.log("Done");
     } catch (e) {
-      return console.error(`Error while encrypting:\n${e}`);
+      if (options.debug) console.log(e);
+      program.error(
+        "error: Unknown error occurred (rerun with --debug for debug information)"
+      );
+      return;
     }
-
-    console.log("Done.");
-  },
-};
-
-export default encrypt;
+  });
