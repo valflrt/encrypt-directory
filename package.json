@@ -5,7 +5,7 @@
   "bin": "build/index.js",
   "scripts": {
     "build": "rm -rf build && npx tsc",
-    "build:binaries": "npm run build && rm -rf binaries && npx pkg ."
+    "build:binaries": "npm run build && npm ci && rm -rf binaries && npx pkg ."
   },
   "author": "valflrt",
   "license": "ISC",
