@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import "colors";
 import util from "util";
 
 export interface LoggerCLIOptions {
@@ -92,16 +92,16 @@ export default class Logger {
     let stringStart;
     if (type === "warn") {
       statusText = " WARN ";
-      stringStart = chalk.yellowBright.inverse(statusText).concat(" ");
+      stringStart = statusText.yellow.inverse.concat(" ");
     } else if (type === "error") {
       statusText = " ERROR ";
-      stringStart = chalk.redBright.inverse(statusText).concat(" ");
+      stringStart = statusText.red.inverse.concat(" ");
     } else if (type === "debug") {
       statusText = " DEBUG ";
-      stringStart = chalk.blueBright.inverse(statusText).concat(" ");
+      stringStart = statusText.blue.inverse.concat(" ");
     } else {
       statusText = " INFO ";
-      stringStart = chalk.greenBright.inverse(statusText).concat(" ");
+      stringStart = statusText.green.inverse.concat(" ");
     }
 
     return stringStart.concat(
