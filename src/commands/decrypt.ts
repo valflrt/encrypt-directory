@@ -26,9 +26,14 @@ export default program
     "4"
   )
   .action(async (path, key, options, cmd) => {
-    let logger = new Logger(cmd.optsWithGlobals());
+    let globalOptions = cmd.optsWithGlobals();
 
-    logger.info("Given options: ".concat(cmd.optsWithGlobals()));
+    let logger = new Logger(globalOptions);
+
+    logger.debugWithOptions({
+      items: ["Given options:", globalOptions],
+      debugOnly: true,
+    });
 
     try {
       // Resolves the given path
@@ -36,10 +41,9 @@ export default program
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
-        if (cmd.optsWithGlobals().debug) console.error(e);
+        logger.debugWithOptions({ items: [e] });
         logger.error("Invalid path !");
         process.exit();
-        return;
       }
 
       // Checks if the item exists
@@ -48,7 +52,6 @@ export default program
           `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
         );
         process.exit();
-        return;
       }
 
       // Creates an Encryption instance
@@ -66,7 +69,7 @@ export default program
       // Check if the item is a directory, a file or something else
       let itemStats = await fs.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
-        console.log("Reading directory...");
+        logger.info("Reading directory...");
 
         // Generates directory tree
         let dir;
@@ -75,13 +78,11 @@ export default program
           if (dir === null) {
             logger.error("Failed to read directory !");
             process.exit();
-            return;
           }
         } catch (e) {
-          if (cmd.optsWithGlobals().debug) console.error(e);
+          logger.errorWithOptions({ items: [e], debugOnly: true });
           logger.error("Failed to read directory !");
-          process.exit(0);
-          return;
+          process.exit();
         }
 
         let outputPath;
@@ -90,32 +91,29 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
-          if (cmd.optsWithGlobals().debug) console.error(e);
+          logger.errorWithOptions({ items: [e], debugOnly: true });
           logger.error("Failed to resolve given output path");
-          process.exit(0);
-          return;
+          process.exit();
         }
         // Checks if the "decrypted" directory already exists
         if (existsSync(outputPath)) {
           logger.error(
             `The decrypted directory already exists. Please delete it and try again.\n(path: ${outputPath})`
           );
-          process.exit(0);
-          return;
+          process.exit();
         }
 
         // Creates base directory (typically [name of the dir to decrypt].decrypted)
         try {
           await fs.mkdir(outputPath);
         } catch (e) {
-          if (cmd.optsWithGlobals().debug) console.error(e);
+          logger.errorWithOptions({ items: [e], debugOnly: true });
           logger.error("Failed to create base directory");
-          process.exit(0);
-          return;
+          process.exit();
         }
 
         // Counts number of items in the directory
-        console.log(`Found ${Tree.getNumberOfEntries(dir)} items.`);
+        logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
 
         // Recursion function to decrypt each file in the directory
         let loopThroughDir = async (items: ItemArray, parentPath: string) => {
@@ -130,12 +128,14 @@ export default program
                 await fs.mkdir(newItemPath, { recursive: true });
                 loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
-                if (cmd.optsWithGlobals().verbose)
-                  console.log(
+                logger.infoWithOptions({
+                  items: [
                     "- decrypting file\n"
                       .concat(`  from "${i.path}"\n`)
-                      .concat(`  to "${newItemPath}"`)
-                  );
+                      .concat(`  to "${newItemPath}"`),
+                  ],
+                  verboseOnly: true,
+                });
                 await fs.writeFile(
                   newItemPath,
                   await decrypt(
@@ -150,7 +150,7 @@ export default program
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Decrypting directory...",
-          manualStart: cmd.optsWithGlobals().verbose ? true : false,
+          manualStart: globalOptions.verbose ? true : false,
         });
 
         try {
@@ -158,14 +158,13 @@ export default program
           loader.stop();
         } catch (e) {
           loader.stop();
-          if (cmd.optsWithGlobals().debug) console.error(e);
+          logger.errorWithOptions({ items: [e], debugOnly: true });
           logger.error(
             "Error while decrypting\n".concat(
               "(The directory you are trying to decrypt might not be a valid encrypted directory)"
             )
           );
-          process.exit(0);
-          return;
+          process.exit();
         }
       } else if (itemStats.isFile()) {
         // Creates output path
@@ -175,23 +174,24 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
-          if (cmd.optsWithGlobals().debug) console.error(e);
+          logger.errorWithOptions({ items: [e], debugOnly: true });
           logger.error("Failed to resolve given output path");
-          process.exit(0);
-          return;
+          process.exit();
         }
 
-        if (cmd.optsWithGlobals().verbose)
-          console.log(
+        logger.infoWithOptions({
+          items: [
             "- encrypting file\n"
               .concat(`  from "${resolvedItemPath}"\n`)
-              .concat(`  to "${newItemPath}"`)
-          );
+              .concat(`  to "${newItemPath}"`),
+          ],
+          verboseOnly: true,
+        });
 
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Decrypting file...\n",
-          manualStart: cmd.optsWithGlobals().verbose ? true : false,
+          manualStart: globalOptions.verbose ? true : false,
         });
 
         try {
@@ -207,28 +207,25 @@ export default program
           loader.stop();
         } catch (e) {
           loader.stop();
-          if (cmd.optsWithGlobals().debug) console.error(e);
+          logger.errorWithOptions({ items: [e], debugOnly: true });
           logger.error(
             "Error while decrypting\n".concat(
               "(The file you are trying to decrypt might not be a valid encrypted file)"
             )
           );
-          process.exit(0);
-          return;
+          process.exit();
         }
       } else {
         logger.error("This program only supports files and directories");
-        process.exit(0);
-        return;
+        process.exit();
       }
 
-      console.log("Done");
+      logger.info("Done");
     } catch (e) {
-      if (cmd.optsWithGlobals().debug) console.error(e);
+      logger.errorWithOptions({ items: [e], debugOnly: true });
       logger.error(
         "Unknown error occurred (rerun with --debug for debug information)"
       );
-      process.exit(0);
-      return;
+      process.exit();
     }
   });
