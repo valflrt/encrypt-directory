@@ -1,8 +1,8 @@
-# crypto-vault
+# Fencryption
 
-A simple cli program to encrypt a directory and its content, made with nodejs and typescript.
+A simple cli program to encrypt a directory or a file, made with nodejs and typescript.
 
-- [crypto-vault](#crypto-vault)
+- [Fencryption](#fencryption)
   - [Usage](#usage)
     - [How to build/compile](#how-to-buildcompile)
     - [Example](#example)
@@ -10,32 +10,6 @@ A simple cli program to encrypt a directory and its content, made with nodejs an
   - [What to expect in further versions](#what-to-expect-in-further-versions)
 
 ## Usage
-
-```
-Usage: crypto-vault [options] [command]
-
-simple encryption and decryption tool.
-
-Options:
-  -V, --version                     output the version number
-  -h, --help                        display help for command
-
-Commands:
-  decrypt|d [options] <path> <key>  decrypts an encrypted file/directory
-  encrypt|e [options] <path> <key>  encrypts a file/directory
-  help [command]                    display help for command
-```
-
-Examples:
-
-```sh
-# Non-compiled
-npx ts-node src/index.ts encrypt </directory/to/encrypt> <your key>
-npx ts-node src/index.ts d </directory/to/decrypt> <your key>
-
-# Compiled
-./encrypt-directory e </directory/to/encrypt> <your key>
-```
 
 ### How to build/compile
 
