@@ -2,9 +2,10 @@ import { program } from "commander";
 import packageJson from "../package.json";
 
 export default program
-  .name("crypto-vault")
-  .description("simple encryption and decryption tool.")
+  .name(packageJson.name)
+  .description(packageJson.description)
   .version(packageJson.version)
+
   .showSuggestionAfterError(true)
 
   .option("--verbose", "verbose mode")
