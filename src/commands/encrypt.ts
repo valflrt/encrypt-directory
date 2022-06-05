@@ -1,8 +1,7 @@
 import { Command } from "commander";
 
-import fs from "fs";
+import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
-import { existsSync } from "fs";
 import pathProgram from "path";
 
 import { Encryption } from "../encryption";
@@ -17,7 +16,13 @@ export default new Command("encrypt")
 
   .argument("<path>", "path of the file/directory to encrypt")
   .argument("<key>", "key used to encrypt")
+
   .option("-o, --output [path]", "path of the output directory or file")
+  .option(
+    "--plain-names",
+    "keep file and directory names plain, do not encrypt them",
+    false
+  )
 
   .action(async (path, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
@@ -112,7 +117,11 @@ export default new Command("encrypt")
               // Creates item path
               let newItemPath = pathProgram.join(
                 parentPath,
-                encryption.encrypt(Buffer.from(i.name)).toString("base64url")
+                !options.plainNames
+                  ? encryption
+                      .encrypt(Buffer.from(i.name))
+                      .toString("base64url")
+                  : i.name
               );
 
               if (i.type === ItemTypes.Dir) {
@@ -146,6 +155,7 @@ export default new Command("encrypt")
           await loopThroughDir(dir.items, outputPath);
           loader.stop();
         } catch (e) {
+          loader.stop();
           logger.debugOnly.error(e);
           logger.error("Error while encrypting");
           process.exit();
@@ -203,7 +213,7 @@ export default new Command("encrypt")
         process.exit();
       }
 
-      logger.info("Done");
+      logger.success("Done");
     } catch (e) {
       logger.debugOnly.error(e);
       logger.error(
