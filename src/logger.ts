@@ -13,8 +13,20 @@ export class LogMethods {
     this._log = log ?? true;
   }
 
+  /**
+   * Logs
+   * @param items Items to log
+   */
   public log(...items: any[]) {
     if (this._log) console.log(...items);
+  }
+
+  /**
+   * Logs success
+   * @param items Items to log
+   */
+  public success(...items: any[]) {
+    this.log(this.baseFormat(items, "success"));
   }
 
   /**
@@ -56,11 +68,14 @@ export class LogMethods {
    */
   private baseFormat(
     items: any[],
-    type: "info" | "warn" | "error" | "debug" = "info"
+    type: "info" | "success" | "warn" | "error" | "debug" = "info"
   ) {
     let statusText;
     let stringStart;
-    if (type === "warn") {
+    if (type === "success") {
+      statusText = " SUCCESS ";
+      stringStart = statusText.green.inverse.concat(" ");
+    } else if (type === "warn") {
       statusText = " WARN ";
       stringStart = statusText.yellow.inverse.concat(" ");
     } else if (type === "error") {
@@ -71,7 +86,7 @@ export class LogMethods {
       stringStart = statusText.blue.inverse.concat(" ");
     } else {
       statusText = " INFO ";
-      stringStart = statusText.green.inverse.concat(" ");
+      stringStart = statusText.white.inverse.concat(" ");
     }
 
     return stringStart.concat(
