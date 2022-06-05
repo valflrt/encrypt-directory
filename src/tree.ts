@@ -36,7 +36,8 @@ export interface Dir extends Item {
 }
 
 /**
- * UnknownItem type – Used when the item is neither a File nor a Dir (example: symbolic links, ...)
+ * UnknownItem type – Used when the item is neither a File
+ * nor a Dir (example: symbolic links, ...)
  */
 export interface UnknownItem extends Item {
   type: ItemTypes.Unknown;
@@ -113,7 +114,9 @@ export class Tree {
      */
     indentSize?: number;
     /**
-     * Bullet to put before file/dir names (don't forget to add a space) – Default is "- " – If `null` specified uses an empty string
+     * Bullet to put before file/dir names (don't forget to add a space)
+     * – Default is "- " – If `null` specified uses an
+     * empty string
      */
     bullet?: string | null;
   }) {
