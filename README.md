@@ -4,7 +4,7 @@
   </a>
 
   <p align="center">
-    <a href="https://img.shields.io/github/workflow/status/valflrt/fencryption/build"><img alt="build status" src="https://img.shields.io/github/workflow/status/valflrt/lejardinier/build" /></a>
+    <a href="https://github.com/valflrt/Fencryption/actions/workflows/build.yml"><img alt="build status" src="https://img.shields.io/github/workflow/status/valflrt/fencryption/build" /></a>
     <a href="./LICENSE"><img alt="license" src="https://img.shields.io/github/license/valflrt/fencryption" /></a>
   </p>
 
