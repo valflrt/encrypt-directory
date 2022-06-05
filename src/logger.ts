@@ -1,22 +1,20 @@
 import "colors";
 import util from "util";
 
-export interface LoggerCLIOptions {
+export interface GivenCLIOptions {
   verbose?: boolean;
   debug?: boolean;
 }
 
-export interface LogMethodWithOptionsOptions {
-  items: any[];
-  verboseOnly?: boolean;
-  debugOnly?: boolean;
-}
+export class LogMethods {
+  private _log: boolean;
 
-export default class Logger {
-  private _CLIOptions: LoggerCLIOptions;
+  constructor(log?: boolean) {
+    this._log = log ?? true;
+  }
 
-  constructor(CLIOptions: LoggerCLIOptions) {
-    this._CLIOptions = CLIOptions;
+  public log(...items: any[]) {
+    if (this._log) console.log(...items);
   }
 
   /**
@@ -24,14 +22,7 @@ export default class Logger {
    * @param items Items to log
    */
   public info(...items: any[]) {
-    console.log(this.baseFormat(items, "info"));
-  }
-  /**
-   * Logs info
-   * @param options Log options
-   */
-  public infoWithOptions(options: LogMethodWithOptionsOptions) {
-    if (this.logOrNo(options)) this.info(...options.items);
+    this.log(this.baseFormat(items, "info"));
   }
 
   /**
@@ -39,14 +30,7 @@ export default class Logger {
    * @param items Items to log
    */
   public warn(...items: any[]) {
-    console.log(this.baseFormat(items, "warn"));
-  }
-  /**
-   * Logs warn
-   * @param options Log options
-   */
-  public warnWithOptions(options: LogMethodWithOptionsOptions) {
-    if (this.logOrNo(options)) this.warn(...options.items);
+    this.log(this.baseFormat(items, "warn"));
   }
 
   /**
@@ -54,29 +38,15 @@ export default class Logger {
    * @param items Items to log
    */
   public error(...items: any[]) {
-    console.log(this.baseFormat(items, "error"));
-  }
-  /**
-   * Logs error
-   * @param options Log options
-   */
-  public errorWithOptions(options: LogMethodWithOptionsOptions) {
-    if (this.logOrNo(options)) this.error(...options.items);
+    this.log(this.baseFormat(items, "error"));
   }
 
   /**
-   * Logs info
+   * Logs debug
    * @param items Items to log
    */
   public debug(...items: any[]) {
-    console.log(this.baseFormat(items, "debug"));
-  }
-  /**
-   * Logs info
-   * @param options Log options
-   */
-  public debugWithOptions(options: LogMethodWithOptionsOptions) {
-    if (this.logOrNo(options)) this.debug(...options.items);
+    this.log(this.baseFormat(items, "debug"));
   }
 
   /**
@@ -112,16 +82,49 @@ export default class Logger {
         .join("\n".concat(" ".repeat(statusText.length + 1)))
     );
   }
+}
+
+export default class Logger extends LogMethods {
+  private _CLIOptions: GivenCLIOptions;
+
+  constructor(CLIOptions: GivenCLIOptions) {
+    super();
+    this._CLIOptions = CLIOptions;
+  }
 
   /**
-   * Whether a log should be logged depending on cli options and log options
-   * @param options Options
+   * Generates log methods but logs only when --debug option
+   * is specified
    */
-  private logOrNo(options: LogMethodWithOptionsOptions) {
-    return (
-      (!options.verboseOnly && !options.debugOnly) ||
-      (this._CLIOptions.verbose && options.verboseOnly === true) ||
-      (this._CLIOptions.debug && options.debugOnly === true)
+  public get debugOnly() {
+    return new LogMethods(!!this._CLIOptions.debug);
+  }
+
+  /**
+   * Generates log methods but logs only when --verbose
+   * option is specified
+   */
+  public get verboseOnly() {
+    return new LogMethods(!!this._CLIOptions.verbose);
+  }
+
+  /**
+   * Generates log methods but logs only when --debug or
+   * --verbose options are specified
+   */
+  public get debugOrVerboseOnly() {
+    return new LogMethods(
+      !!this._CLIOptions.debug || !!this._CLIOptions.verbose
+    );
+  }
+
+  /**
+   * Generates log methods but logs only when --debug and
+   * --verbose options are specified
+   */
+  public get debugAndVerboseOnly() {
+    return new LogMethods(
+      !!this._CLIOptions.debug && !!this._CLIOptions.verbose
     );
   }
 }
