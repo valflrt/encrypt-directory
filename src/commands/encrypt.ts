@@ -15,6 +15,7 @@ import Logger from "../logger";
 export default new Command("encrypt")
   .aliases(["e"])
   .description("encrypts a file/directory")
+
   .argument("<path>", "path of the file/directory to encrypt")
   .argument("<key>", "key used to encrypt")
   .option("-o, --output [path]", "path of the output directory or file")
@@ -24,6 +25,7 @@ export default new Command("encrypt")
     "custom compression level (1-9)",
     "4"
   )
+
   .action(async (path, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
 
