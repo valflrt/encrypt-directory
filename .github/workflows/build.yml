@@ -2,6 +2,11 @@ name: build
 
 on:
   push:
+    paths-ignore:
+      - "docs/*"
+      - "scripts/*"
+      - "README.md"
+      - "LICENSE"
   workflow_dispatch:
 
 jobs:
