@@ -36,9 +36,6 @@
     "outputPath": "binaries"
   },
   "description": "A simple cli program to encrypt a directory and its content, made with nodejs and typescript.",
-  "directories": {
-    "example": "example"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/valflrt/encrypt-directory.git"
