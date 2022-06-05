@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="#">
+  <a href="#readme">
     <img src="./docs/assets/logo.png" width="128px" height="auto">
   </a>
 
@@ -30,7 +30,7 @@ A simple cli program to encrypt a directory or a file, made with nodejs and type
 ```
 Usage: fencryption [options] [command]
 
-A simple cli program to encrypt a directory and its content, made with nodejs and typescript.
+A simple cli program to encrypt a file/directory
 
 Options:
   -V, --version                     output the version number
@@ -39,8 +39,8 @@ Options:
   -h, --help                        display help for command
 
 Commands:
-  decrypt|d [options] <path> <key>  decrypts an encrypted file/directory
   encrypt|e [options] <path> <key>  encrypts a file/directory
+  decrypt|d [options] <path> <key>  decrypts an encrypted file/directory
   help [command]                    display help for command
 ```
 
