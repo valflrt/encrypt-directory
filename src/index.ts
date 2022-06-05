@@ -1,6 +1,4 @@
-#!/usr/bin/node
-
-import "./commands";
 import program from "./program";
+import "./commands";
 
 program.parse(process.argv);

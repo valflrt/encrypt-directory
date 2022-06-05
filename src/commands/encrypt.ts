@@ -1,4 +1,4 @@
-import program from "../program";
+import { Command } from "commander";
 
 import { gzip } from "node-gzip";
 
@@ -12,10 +12,10 @@ import { ItemArray, ItemTypes, Tree } from "../tree";
 import { Loader } from "../loader";
 import Logger from "../logger";
 
-export default program
-  .command("encrypt")
+export default new Command("encrypt")
   .aliases(["e"])
   .description("encrypts a file/directory")
+
   .argument("<path>", "path of the file/directory to encrypt")
   .argument("<key>", "key used to encrypt")
   .option("-o, --output [path]", "path of the output directory or file")
@@ -25,6 +25,7 @@ export default program
     "custom compression level (1-9)",
     "4"
   )
+
   .action(async (path, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
 
