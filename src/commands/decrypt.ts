@@ -30,10 +30,7 @@ export default program
 
     let logger = new Logger(globalOptions);
 
-    logger.debugWithOptions({
-      items: ["Given options:", globalOptions],
-      debugOnly: true,
-    });
+    logger.debugOnly.debug("Given options:", globalOptions);
 
     try {
       // Resolves the given path
@@ -41,7 +38,7 @@ export default program
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
-        logger.debugWithOptions({ items: [e] });
+        logger.debugOnly.error(e);
         logger.error("Invalid path !");
         process.exit();
       }
@@ -57,7 +54,11 @@ export default program
       // Creates an Encryption instance
       let encryption = new Encryption(key);
 
-      // Custom decrypt function changing depending on options
+      /**
+       * Custom decrypt function changing depending on given
+       * cli options
+       * @param buffer Buffer to decrypt
+       */
       let decrypt = async (buffer: Buffer) => {
         return options.compression
           ? await ungzip(encryption.decrypt(buffer), {
@@ -66,7 +67,10 @@ export default program
           : encryption.decrypt(buffer);
       };
 
-      // Check if the item is a directory, a file or something else
+      /**
+       * Check if the item is a directory, a file or
+       * something else
+       */
       let itemStats = await fs.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
         logger.info("Reading directory...");
@@ -80,7 +84,7 @@ export default program
             process.exit();
           }
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to read directory !");
           process.exit();
         }
@@ -91,7 +95,7 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to resolve given output path");
           process.exit();
         }
@@ -107,7 +111,7 @@ export default program
         try {
           await fs.mkdir(outputPath);
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to create base directory");
           process.exit();
         }
@@ -115,10 +119,16 @@ export default program
         // Counts number of items in the directory
         logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
 
-        // Recursion function to decrypt each file in the directory
+        /**
+         * Recursion function to decrypt each file in the
+         * directory
+         * @param items Items from Dir object
+         * @param parentPath Path of the parent directory
+         */
         let loopThroughDir = async (items: ItemArray, parentPath: string) => {
           await Promise.all(
             items.map(async (i) => {
+              // Creates item path
               let newItemPath = pathProgram.join(
                 parentPath,
                 (await decrypt(Buffer.from(i.name, "base64url"))).toString()
@@ -128,14 +138,11 @@ export default program
                 await fs.mkdir(newItemPath, { recursive: true });
                 loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
-                logger.infoWithOptions({
-                  items: [
-                    "- decrypting file\n"
-                      .concat(`  from "${i.path}"\n`)
-                      .concat(`  to "${newItemPath}"`),
-                  ],
-                  verboseOnly: true,
-                });
+                logger.debugOrVerboseOnly.info(
+                  "- decrypting file\n"
+                    .concat(`  from "${i.path}"\n`)
+                    .concat(`  to "${newItemPath}"`)
+                );
                 await fs.writeFile(
                   newItemPath,
                   await decrypt(
@@ -158,7 +165,7 @@ export default program
           loader.stop();
         } catch (e) {
           loader.stop();
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error(
             "Error while decrypting\n".concat(
               "(The directory you are trying to decrypt might not be a valid encrypted directory)"
@@ -174,23 +181,28 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to resolve given output path");
           process.exit();
         }
 
-        logger.infoWithOptions({
-          items: [
-            "- encrypting file\n"
-              .concat(`  from "${resolvedItemPath}"\n`)
-              .concat(`  to "${newItemPath}"`),
-          ],
-          verboseOnly: true,
-        });
+        // Checks if the item already exists
+        if (!existsSync(resolvedItemPath)) {
+          logger.error(
+            `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
+          );
+          process.exit();
+        }
+
+        logger.debugOrVerboseOnly.info(
+          "- encrypting file\n"
+            .concat(`  from "${resolvedItemPath}"\n`)
+            .concat(`  to "${newItemPath}"`)
+        );
 
         // Loading animation
         let loader = new Loader({
-          text: "[loader]  Decrypting file...\n",
+          text: "[loader]  Decrypting file...",
           manualStart: globalOptions.verbose ? true : false,
         });
 
@@ -207,7 +219,7 @@ export default program
           loader.stop();
         } catch (e) {
           loader.stop();
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error(
             "Error while decrypting\n".concat(
               "(The file you are trying to decrypt might not be a valid encrypted file)"
@@ -222,7 +234,7 @@ export default program
 
       logger.info("Done");
     } catch (e) {
-      logger.errorWithOptions({ items: [e], debugOnly: true });
+      logger.debugOnly.error(e);
       logger.error(
         "Unknown error occurred (rerun with --debug for debug information)"
       );

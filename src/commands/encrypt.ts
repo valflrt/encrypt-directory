@@ -30,10 +30,7 @@ export default program
 
     let logger = new Logger(globalOptions);
 
-    logger.debugWithOptions({
-      items: ["Given options:", globalOptions],
-      debugOnly: true,
-    });
+    logger.debugOnly.debug("Given options:", globalOptions);
 
     try {
       // Resolves the given path
@@ -41,7 +38,7 @@ export default program
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
-        logger.errorWithOptions({ items: [e], debugOnly: true });
+        logger.debugOnly.error(e);
         logger.error("Invalid path !");
         process.exit();
       }
@@ -57,18 +54,25 @@ export default program
       // Creates an Encryption instance
       let encryption = new Encryption(key);
 
-      // Custom encrypt function changing depending on options
-      let encrypt = async (value: Buffer) => {
+      /**
+       * Custom encrypt function changing depending on given
+       * cli options
+       * @param buffer Buffer to encrypt
+       */
+      let encrypt = async (buffer: Buffer) => {
         return options.compression
           ? encryption.encrypt(
-              await gzip(Buffer.from(value), {
+              await gzip(Buffer.from(buffer), {
                 level: Number.parseInt(options.compressionLevel),
               })
             )
-          : encryption.encrypt(Buffer.from(value));
+          : encryption.encrypt(Buffer.from(buffer));
       };
 
-      // Check if the item is a directory, a file or something else
+      /**
+       * Check if the item is a directory, a file or
+       * something else
+       */
       let itemStats = await fs.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
         logger.info("Reading directory...");
@@ -82,7 +86,7 @@ export default program
             process.exit();
           }
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to read directory !");
           process.exit();
         }
@@ -93,7 +97,7 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.concat(".encrypted");
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to resolve given output path");
           process.exit();
         }
@@ -109,7 +113,7 @@ export default program
         try {
           await fs.mkdir(outputPath);
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to create base directory");
           process.exit();
         }
@@ -117,7 +121,12 @@ export default program
         // Counts number of items in the directory
         logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
 
-        // Recursion function to encrypt each file in the directory
+        /**
+         * Recursion function to encrypt each file in the
+         * directory
+         * @param items Items from Dir object
+         * @param parentPath Path of the parent directory
+         */
         let loopThroughDir = async (items: ItemArray, parentPath: string) => {
           await Promise.all(
             items.map(async (i) => {
@@ -128,17 +137,14 @@ export default program
               );
 
               if (i.type === ItemTypes.Dir) {
-                await fs.mkdir(newItemPath);
+                await fs.mkdir(newItemPath, { recursive: true });
                 loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
-                logger.infoWithOptions({
-                  items: [
-                    "- encrypting file\n"
-                      .concat(`  from "${i.path}"\n`)
-                      .concat(`  to "${newItemPath}"`),
-                  ],
-                  verboseOnly: true,
-                });
+                logger.debugOrVerboseOnly.info(
+                  "- encrypting file\n"
+                    .concat(`  from "${i.path}"\n`)
+                    .concat(`  to "${newItemPath}"`)
+                );
                 await fs.writeFile(
                   newItemPath,
                   (
@@ -161,7 +167,7 @@ export default program
           await loopThroughDir(dir.items, outputPath);
           loader.stop();
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Error while encrypting");
           process.exit();
         }
@@ -173,19 +179,24 @@ export default program
             ? pathProgram.resolve(options.output)
             : resolvedItemPath.concat(".encrypted");
         } catch (e) {
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Failed to resolve given output path");
           process.exit();
         }
 
-        logger.infoWithOptions({
-          items: [
-            "- encrypting file\n"
-              .concat(`  from "${resolvedItemPath}"\n`)
-              .concat(`  to "${newItemPath}"`),
-          ],
-          verboseOnly: true,
-        });
+        // Checks if the item already exists
+        if (!existsSync(resolvedItemPath)) {
+          logger.error(
+            `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
+          );
+          process.exit();
+        }
+
+        logger.debugOrVerboseOnly.info(
+          "- encrypting file\n"
+            .concat(`  from "${resolvedItemPath}"\n`)
+            .concat(`  to "${newItemPath}"`)
+        );
 
         // Loading animation
         let loader = new Loader({
@@ -204,7 +215,7 @@ export default program
           loader.stop();
         } catch (e) {
           loader.stop();
-          logger.errorWithOptions({ items: [e], debugOnly: true });
+          logger.debugOnly.error(e);
           logger.error("Error while encrypting");
           process.exit();
         }
@@ -215,7 +226,7 @@ export default program
 
       logger.info("Done");
     } catch (e) {
-      logger.errorWithOptions({ items: [e], debugOnly: true });
+      logger.debugOnly.error(e);
       logger.error(
         "Unknown error occurred (rerun with --debug for debug information)"
       );
