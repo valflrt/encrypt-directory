@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Stream, Transform, Writable } from "stream";
 
 export interface EncryptionOptions {
   key: string;
@@ -49,6 +50,28 @@ export class Encryption {
   }
 
   /**
+   * Encrypts a Stream and returns it (the encrypted version)
+   * @param plainStream Plain Stream to encrypt
+   */
+  public encryptStream(plainStream: Stream) {
+    let iv = crypto.randomBytes(16);
+    let cipher = crypto.createCipheriv(this.algorithm, this._hashedKey, iv);
+
+    let started = false;
+    return plainStream.pipe(cipher).pipe(
+      new Transform({
+        transform(chunk, encoding, callback) {
+          if (!started) {
+            started = true;
+            this.push(Buffer.concat([iv, chunk]));
+          } else this.push(chunk);
+          callback();
+        },
+      })
+    );
+  }
+
+  /**
    * Decrypts a Buffer and returns it (the decrypted version)
    * @param encrypted Encrypted Buffer to decrypt
    */
@@ -59,5 +82,26 @@ export class Encryption {
     let result = Buffer.concat([decipher.update(encrypted), decipher.final()]);
 
     return result;
+  }
+
+  /**
+   * Decrypts a Stream
+   * @param encryptedStream Encrypted Stream to decrypt
+   */
+  public decryptStream(encryptedStream: Writable) {
+    let algorithm = this.algorithm;
+    let hashedKey = this._hashedKey;
+    let iv: string;
+    return new Transform({
+      transform(chunk, encoding, callback) {
+        if (!iv) {
+          iv = chunk.slice(0, 16);
+          let decipher = crypto.createDecipheriv(algorithm, hashedKey, iv);
+          this.pipe(decipher).pipe(encryptedStream);
+          this.push(chunk.slice(16));
+        } else this.push(chunk);
+        callback();
+      },
+    });
   }
 }

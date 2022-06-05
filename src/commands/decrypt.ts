@@ -1,8 +1,7 @@
 import { Command } from "commander";
 
-import { ungzip } from "node-gzip";
-
-import fs from "fs/promises";
+import fs from "fs";
+import fsAsync from "fs/promises";
 import { existsSync } from "fs";
 import pathProgram from "path";
 
@@ -35,7 +34,7 @@ export default new Command("decrypt")
 
     try {
       // Resolves the given path
-      let resolvedItemPath;
+      let resolvedItemPath: string;
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
@@ -56,23 +55,10 @@ export default new Command("decrypt")
       let encryption = new Encryption(key);
 
       /**
-       * Custom decrypt function changing depending on given
-       * cli options
-       * @param buffer Buffer to decrypt
-       */
-      let decrypt = async (buffer: Buffer) => {
-        return options.compression
-          ? await ungzip(encryption.decrypt(buffer), {
-              level: Number.parseInt(options.compressionLevel),
-            })
-          : encryption.decrypt(buffer);
-      };
-
-      /**
        * Check if the item is a directory, a file or
        * something else
        */
-      let itemStats = await fs.stat(resolvedItemPath);
+      let itemStats = await fsAsync.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
         logger.info("Reading directory...");
 
@@ -110,7 +96,7 @@ export default new Command("decrypt")
 
         // Creates base directory (typically [name of the dir to decrypt].decrypted)
         try {
-          await fs.mkdir(outputPath);
+          await fsAsync.mkdir(outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
           logger.error("Failed to create base directory");
@@ -132,11 +118,13 @@ export default new Command("decrypt")
               // Creates item path
               let newItemPath = pathProgram.join(
                 parentPath,
-                (await decrypt(Buffer.from(i.name, "base64url"))).toString()
+                encryption
+                  .decrypt(Buffer.from(i.name, "base64url"))
+                  .toString("utf8")
               );
 
               if (i.type === ItemTypes.Dir) {
-                await fs.mkdir(newItemPath, { recursive: true });
+                await fsAsync.mkdir(newItemPath, { recursive: true });
                 loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
                 logger.debugOrVerboseOnly.info(
@@ -144,11 +132,16 @@ export default new Command("decrypt")
                     .concat(`  from "${i.path}"\n`)
                     .concat(`  to "${newItemPath}"`)
                 );
-                await fs.writeFile(
-                  newItemPath,
-                  await decrypt(
-                    Buffer.from(await fs.readFile(i.path, "utf8"), "base64url")
-                  )
+                await new Promise((resolve, reject) =>
+                  fs
+                    .createReadStream(i.path)
+                    .pipe(
+                      encryption.decryptStream(
+                        fs.createWriteStream(newItemPath)
+                      )
+                    )
+                    .on("finish", resolve)
+                    .on("error", reject)
                 );
               }
             })
@@ -176,7 +169,7 @@ export default new Command("decrypt")
         }
       } else if (itemStats.isFile()) {
         // Creates output path
-        let newItemPath;
+        let newItemPath: string;
         try {
           newItemPath = options.output
             ? pathProgram.resolve(options.output)
@@ -208,14 +201,12 @@ export default new Command("decrypt")
         });
 
         try {
-          await fs.writeFile(
-            newItemPath,
-            await decrypt(
-              Buffer.from(
-                await fs.readFile(resolvedItemPath, "utf8"),
-                "base64url"
-              )
-            )
+          await new Promise((resolve, reject) =>
+            fs
+              .createReadStream(resolvedItemPath)
+              .pipe(encryption.decryptStream(fs.createWriteStream(newItemPath)))
+              .on("finish", resolve)
+              .on("error", reject)
           );
           loader.stop();
         } catch (e) {

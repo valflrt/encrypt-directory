@@ -1,8 +1,7 @@
 import { Command } from "commander";
 
-import { gzip } from "node-gzip";
-
-import fs from "fs/promises";
+import fs from "fs";
+import fsAsync from "fs/promises";
 import { existsSync } from "fs";
 import pathProgram from "path";
 
@@ -19,12 +18,6 @@ export default new Command("encrypt")
   .argument("<path>", "path of the file/directory to encrypt")
   .argument("<key>", "key used to encrypt")
   .option("-o, --output [path]", "path of the output directory or file")
-  .option("--no-compression", "do not use compression")
-  .option(
-    "--compression-level [compression level]",
-    "custom compression level (1-9)",
-    "4"
-  )
 
   .action(async (path, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
@@ -35,7 +28,7 @@ export default new Command("encrypt")
 
     try {
       // Resolves the given path
-      let resolvedItemPath;
+      let resolvedItemPath: string;
       try {
         resolvedItemPath = pathProgram.resolve(path);
       } catch (e) {
@@ -56,25 +49,10 @@ export default new Command("encrypt")
       let encryption = new Encryption(key);
 
       /**
-       * Custom encrypt function changing depending on given
-       * cli options
-       * @param buffer Buffer to encrypt
-       */
-      let encrypt = async (buffer: Buffer) => {
-        return options.compression
-          ? encryption.encrypt(
-              await gzip(Buffer.from(buffer), {
-                level: Number.parseInt(options.compressionLevel),
-              })
-            )
-          : encryption.encrypt(Buffer.from(buffer));
-      };
-
-      /**
        * Check if the item is a directory, a file or
        * something else
        */
-      let itemStats = await fs.stat(resolvedItemPath);
+      let itemStats = await fsAsync.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
         logger.info("Reading directory...");
 
@@ -112,7 +90,7 @@ export default new Command("encrypt")
 
         // Creates base directory (typically [name of the dir to encrypt].encrypted)
         try {
-          await fs.mkdir(outputPath);
+          await fsAsync.mkdir(outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
           logger.error("Failed to create base directory");
@@ -134,11 +112,11 @@ export default new Command("encrypt")
               // Creates item path
               let newItemPath = pathProgram.join(
                 parentPath,
-                (await encrypt(Buffer.from(i.name))).toString("base64url")
+                encryption.encrypt(Buffer.from(i.name)).toString("base64url")
               );
 
               if (i.type === ItemTypes.Dir) {
-                await fs.mkdir(newItemPath, { recursive: true });
+                await fsAsync.mkdir(newItemPath, { recursive: true });
                 loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
                 logger.debugOrVerboseOnly.info(
@@ -146,12 +124,12 @@ export default new Command("encrypt")
                     .concat(`  from "${i.path}"\n`)
                     .concat(`  to "${newItemPath}"`)
                 );
-                await fs.writeFile(
-                  newItemPath,
-                  (
-                    await encrypt(await fs.readFile(i.path))
-                  ).toString("base64url"),
-                  "utf8"
+                await new Promise((resolve, reject) =>
+                  encryption
+                    .encryptStream(fs.createReadStream(i.path))
+                    .pipe(fs.createWriteStream(newItemPath))
+                    .on("finish", resolve)
+                    .on("error", reject)
                 );
               }
             })
@@ -174,7 +152,7 @@ export default new Command("encrypt")
         }
       } else if (itemStats.isFile()) {
         // Creates output path
-        let newItemPath;
+        let newItemPath: string;
         try {
           newItemPath = options.output
             ? pathProgram.resolve(options.output)
@@ -206,12 +184,12 @@ export default new Command("encrypt")
         });
 
         try {
-          await fs.writeFile(
-            newItemPath,
-            (
-              await encrypt(await fs.readFile(resolvedItemPath))
-            ).toString("base64url"),
-            "utf8"
+          await new Promise((resolve, reject) =>
+            encryption
+              .encryptStream(fs.createReadStream(resolvedItemPath))
+              .pipe(fs.createWriteStream(newItemPath))
+              .on("finish", resolve)
+              .on("error", reject)
           );
           loader.stop();
         } catch (e) {
