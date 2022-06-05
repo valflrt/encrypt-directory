@@ -18,12 +18,6 @@ export default new Command("decrypt")
   .argument("<path>", "path of the encrypted directory to decrypt")
   .argument("<key>", "key used to decrypt")
   .option("-o, --output [path]", "path of the output directory or file")
-  .option("--no-compression", "do not use compression")
-  .option(
-    "--compression-level [compression level]",
-    "custom compression level (1-9)",
-    "4"
-  )
 
   .action(async (path, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
