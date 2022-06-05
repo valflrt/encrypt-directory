@@ -1,4 +1,4 @@
-import program from "../program";
+import { Command } from "commander";
 
 import { ungzip } from "node-gzip";
 
@@ -12,8 +12,7 @@ import { ItemArray, ItemTypes, Tree } from "../tree";
 import { Loader } from "../loader";
 import Logger from "../logger";
 
-export default program
-  .command("decrypt")
+export default new Command("decrypt")
   .aliases(["d"])
   .description("decrypts an encrypted file/directory")
   .argument("<path>", "path of the encrypted directory to decrypt")

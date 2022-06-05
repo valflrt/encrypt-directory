@@ -1,4 +1,4 @@
-import program from "../program";
+import { Command } from "commander";
 
 import { gzip } from "node-gzip";
 
@@ -12,8 +12,7 @@ import { ItemArray, ItemTypes, Tree } from "../tree";
 import { Loader } from "../loader";
 import Logger from "../logger";
 
-export default program
-  .command("encrypt")
+export default new Command("encrypt")
   .aliases(["e"])
   .description("encrypts a file/directory")
   .argument("<path>", "path of the file/directory to encrypt")
