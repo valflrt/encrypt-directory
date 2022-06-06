@@ -57,15 +57,15 @@ export class Encryption {
     let iv = crypto.randomBytes(16);
     let cipher = crypto.createCipheriv(this.algorithm, this._hashedKey, iv);
 
-    let started = false;
+    let isFirstChunk = true;
     return plainStream.pipe(cipher).pipe(
       new Transform({
-        transform(chunk, encoding, callback) {
-          if (!started) {
-            started = true;
+        transform(chunk: Buffer) {
+          chunk = Buffer.from(chunk);
+          if (isFirstChunk) {
+            isFirstChunk = false;
             this.push(Buffer.concat([iv, chunk]));
           } else this.push(chunk);
-          callback();
         },
       })
     );
@@ -91,16 +91,17 @@ export class Encryption {
   public decryptStream(encryptedStream: Writable) {
     let algorithm = this.algorithm;
     let hashedKey = this._hashedKey;
-    let iv: string;
+
+    let iv: Buffer;
     return new Transform({
-      transform(chunk, encoding, callback) {
+      transform(chunk: Buffer) {
+        chunk = Buffer.from(chunk);
         if (!iv) {
           iv = chunk.slice(0, 16);
           let decipher = crypto.createDecipheriv(algorithm, hashedKey, iv);
           this.pipe(decipher).pipe(encryptedStream);
           this.push(chunk.slice(16));
         } else this.push(chunk);
-        callback();
       },
     });
   }
