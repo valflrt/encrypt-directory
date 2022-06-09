@@ -1,17 +1,56 @@
 import crypto from "crypto";
-import { Stream, Transform, Writable } from "stream";
+import {
+  Readable,
+  Transform,
+  TransformCallback,
+  TransformOptions,
+  Writable,
+} from "stream";
+
+type CustomTransformOptions = Omit<TransformOptions, "transform"> & {
+  transform?(
+    this: CustomTransform,
+    chunk: any,
+    encoding: BufferEncoding,
+    callback: TransformCallback
+  ): void;
+  local?: { [key: string]: any };
+};
+
+/**
+ * Custom transform options, used in {@link Encryption.encryptStream}
+ * and {@link Encryption.decryptStream}
+ */
+class CustomTransform extends Transform {
+  public local: { [key: string]: any };
+
+  constructor(options: CustomTransformOptions = {}) {
+    let { local, ...rest } = options;
+    super(rest);
+    this.local = local ?? {};
+  }
+}
 
 export interface EncryptionOptions {
   key: string;
   algorithm?: string;
 }
 
-export class Encryption {
+export default class Encryption {
   private _hashedKey: string;
 
   public algorithm: string;
 
+  /**
+   * Creates an Encryption object
+   * @param key Key to encrypt with
+   * @param options Encryption options
+   */
   constructor(key: string, options?: Omit<EncryptionOptions, "key">);
+  /**
+   * Creates an Encryption object
+   * @param options Encryption options
+   */
   constructor(options: EncryptionOptions);
   constructor(...args: any[]) {
     let hashedKey: string;
@@ -44,31 +83,12 @@ export class Encryption {
   public encrypt(plain: Buffer) {
     let iv = crypto.randomBytes(16);
     let cipher = crypto.createCipheriv(this.algorithm, this._hashedKey, iv);
-    let result = Buffer.concat([iv, cipher.update(plain), cipher.final()]);
-
+    let result = Buffer.concat([
+      iv,
+      cipher.update(Buffer.concat([Buffer.alloc(4), plain])),
+      cipher.final(),
+    ]);
     return result;
-  }
-
-  /**
-   * Encrypts a Stream and returns it (the encrypted version)
-   * @param plainStream Plain Stream to encrypt
-   */
-  public encryptStream(plainStream: Stream) {
-    let iv = crypto.randomBytes(16);
-    let cipher = crypto.createCipheriv(this.algorithm, this._hashedKey, iv);
-
-    let isFirstChunk = true;
-    return plainStream.pipe(cipher).pipe(
-      new Transform({
-        transform(chunk: Buffer) {
-          chunk = Buffer.from(chunk);
-          if (isFirstChunk) {
-            isFirstChunk = false;
-            this.push(Buffer.concat([iv, chunk]));
-          } else this.push(chunk);
-        },
-      })
-    );
   }
 
   /**
@@ -80,29 +100,119 @@ export class Encryption {
     encrypted = encrypted.slice(16);
     let decipher = crypto.createDecipheriv(this.algorithm, this._hashedKey, iv);
     let result = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    if (Buffer.compare(result.slice(0, 4), Buffer.alloc(4)) !== 0)
+      throw new Error("Wrong key");
+    return result.slice(4);
+  }
 
-    return result;
+  /**
+   * Encrypts a Stream
+   * @param input Plain input (Readable stream) to encrypt
+   * @param output Output (Writable stream) to pipe the
+   * decrypted data in
+   */
+  public encryptStream(input: Readable, output: Writable) {
+    let iv = crypto.randomBytes(16);
+    let cipher = crypto.createCipheriv(this.algorithm, this._hashedKey, iv);
+
+    return new Promise<void>((resolve, reject) =>
+      input
+        .on("end", resolve)
+        .on("error", reject)
+        .pipe(
+          new CustomTransform({
+            transform(chunk) {
+              if (this.local.isFirstChunk) {
+                this.local.isFirstChunk = false;
+                this.push(Buffer.concat([Buffer.alloc(4), chunk]));
+              } else this.push(chunk);
+            },
+            local: {
+              isFirstChunk: true,
+            },
+          })
+        )
+        .on("error", reject)
+        .pipe(cipher)
+        .on("error", reject)
+        .pipe(
+          new CustomTransform({
+            transform(chunk: Buffer) {
+              chunk = Buffer.from(chunk);
+              if (this.local.isFirstChunk) {
+                this.local.isFirstChunk = false;
+                this.push(Buffer.concat([iv, chunk]));
+              } else this.push(chunk);
+            },
+            local: {
+              isFirstChunk: true,
+            },
+          })
+        )
+        .on("error", reject)
+        .pipe(output)
+        .on("error", reject)
+    );
   }
 
   /**
    * Decrypts a Stream
-   * @param encryptedStream Encrypted Stream to decrypt
+   * @param input Encrypted input (Readable stream) to
+   * decrypt
+   * @param output Output (Writable stream) to pipe the
+   * decrypted data in
    */
-  public decryptStream(encryptedStream: Writable) {
+  public decryptStream(input: Readable, output: Writable) {
     let algorithm = this.algorithm;
     let hashedKey = this._hashedKey;
 
-    let iv: Buffer;
-    return new Transform({
-      transform(chunk: Buffer) {
-        chunk = Buffer.from(chunk);
-        if (!iv) {
-          iv = chunk.slice(0, 16);
-          let decipher = crypto.createDecipheriv(algorithm, hashedKey, iv);
-          this.pipe(decipher).pipe(encryptedStream);
-          this.push(chunk.slice(16));
-        } else this.push(chunk);
-      },
-    });
+    return new Promise<void>((resolve, reject) =>
+      input
+        .on("end", resolve)
+        .on("error", reject)
+        .pipe(
+          new CustomTransform({
+            transform(chunk: Buffer) {
+              chunk = Buffer.from(chunk);
+              if (!this.local.iv) {
+                this.local.iv = chunk.slice(0, 16);
+                let decipher = crypto.createDecipheriv(
+                  algorithm,
+                  hashedKey,
+                  this.local.iv
+                );
+                this.on("error", reject)
+                  .pipe(decipher)
+                  .on("error", reject)
+                  .pipe(
+                    new CustomTransform({
+                      transform(chunk) {
+                        if (this.local.isFirstChunk) {
+                          this.local.isFirstChunk = false;
+                          if (
+                            Buffer.compare(
+                              chunk.slice(0, 4),
+                              Buffer.alloc(4)
+                            ) !== 0
+                          )
+                            reject("Wrong key");
+                          this.push(chunk.slice(4));
+                        } else this.push(chunk);
+                      },
+                      local: {
+                        isFirstChunk: true,
+                      },
+                    })
+                  )
+                  .on("error", reject)
+                  .pipe(output)
+                  .on("error", reject);
+
+                this.push(chunk.slice(16));
+              } else this.push(chunk);
+            },
+          })
+        )
+    );
   }
 }
