@@ -1,11 +1,13 @@
 let availableStyles: { [K in LoaderStyles]: string[] } = {
-  0: "⣾⣽⣻⢿⡿⣟⣯⣷".split("").reverse(),
-  1: "▁▂▃▄▅▆▇█▇▆▅▄▃▂▁".split(""),
+  0: "⠖⠲⠴⠦".split(""),
+  1: "⣾⣽⣻⢿⡿⣟⣯⣷".split("").reverse(),
+  2: "▁▂▃▄▅▆▇█▇▆▅▄▃▂▁".split(""),
 };
 
 export enum LoaderStyles {
   Type0,
   Type1,
+  Type2,
 }
 
 export class Loader {
