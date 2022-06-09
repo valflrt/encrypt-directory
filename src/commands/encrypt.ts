@@ -4,7 +4,7 @@ import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
 
-import { Encryption } from "../encryption";
+import Encryption from "../encryption";
 import { ItemArray, ItemTypes, Tree } from "../tree";
 
 import { Loader } from "../loader";
@@ -75,7 +75,7 @@ export default new Command("encrypt")
           process.exit();
         }
 
-        let outputPath;
+        let outputPath: string;
         try {
           outputPath = options.output
             ? pathProgram.resolve(options.output)
@@ -105,6 +105,9 @@ export default new Command("encrypt")
         // Counts number of items in the directory
         logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
 
+        // A function to clean, here remove output directory
+        let clean = () => fsAsync.rmdir(outputPath);
+
         /**
          * Recursion function to encrypt each file in the
          * directory
@@ -133,13 +136,19 @@ export default new Command("encrypt")
                     .concat(`  from "${i.path}"\n`)
                     .concat(`  to "${newItemPath}"`)
                 );
-                await new Promise((resolve, reject) =>
-                  encryption
-                    .encryptStream(fs.createReadStream(i.path))
-                    .pipe(fs.createWriteStream(newItemPath))
-                    .on("finish", resolve)
-                    .on("error", reject)
-                );
+                try {
+                  await encryption.encryptStream(
+                    fs.createReadStream(i.path),
+                    fs.createWriteStream(newItemPath)
+                  );
+                } catch (e) {
+                  logger.debugOnly.error(e);
+                  logger.error(
+                    "Failed to decrypt, the given key might be wrong."
+                  );
+                  await clean();
+                  process.exit();
+                }
               }
             })
           );
@@ -148,7 +157,6 @@ export default new Command("encrypt")
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Encrypting directory...",
-          manualStart: globalOptions.verbose ? true : false,
         });
 
         try {
@@ -158,6 +166,7 @@ export default new Command("encrypt")
           loader.stop();
           logger.debugOnly.error(e);
           logger.error("Error while encrypting");
+          await clean();
           process.exit();
         }
       } else if (itemStats.isFile()) {
@@ -190,16 +199,12 @@ export default new Command("encrypt")
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Encrypting file...",
-          manualStart: globalOptions.verbose ? true : false,
         });
 
         try {
-          await new Promise((resolve, reject) =>
-            encryption
-              .encryptStream(fs.createReadStream(resolvedItemPath))
-              .pipe(fs.createWriteStream(newItemPath))
-              .on("finish", resolve)
-              .on("error", reject)
+          await encryption.encryptStream(
+            fs.createReadStream(resolvedItemPath),
+            fs.createWriteStream(newItemPath)
           );
           loader.stop();
         } catch (e) {

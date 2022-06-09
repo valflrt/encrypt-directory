@@ -4,7 +4,7 @@ import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
 
-import { Encryption } from "../encryption";
+import Encryption from "../encryption";
 import { ItemArray, ItemTypes, Tree } from "../tree";
 
 import { Loader } from "../loader";
@@ -75,7 +75,7 @@ export default new Command("decrypt")
           process.exit();
         }
 
-        let outputPath;
+        let outputPath: string;
         try {
           outputPath = options.output
             ? pathProgram.resolve(options.output)
@@ -105,6 +105,9 @@ export default new Command("decrypt")
         // Counts number of items in the directory
         logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
 
+        // A function to clean, here remove output directory
+        let clean = () => fsAsync.rmdir(outputPath);
+
         /**
          * Recursion function to decrypt each file in the
          * directory
@@ -133,17 +136,19 @@ export default new Command("decrypt")
                     .concat(`  from "${i.path}"\n`)
                     .concat(`  to "${newItemPath}"`)
                 );
-                await new Promise((resolve, reject) =>
-                  fs
-                    .createReadStream(i.path)
-                    .pipe(
-                      encryption.decryptStream(
-                        fs.createWriteStream(newItemPath)
-                      )
-                    )
-                    .on("finish", resolve)
-                    .on("error", reject)
-                );
+                try {
+                  await encryption.decryptStream(
+                    fs.createReadStream(i.path),
+                    fs.createWriteStream(newItemPath)
+                  );
+                } catch (e) {
+                  logger.debugOnly.error(e);
+                  logger.error(
+                    "Failed to decrypt, the given key might be wrong."
+                  );
+                  await clean();
+                  process.exit();
+                }
               }
             })
           );
@@ -152,7 +157,6 @@ export default new Command("decrypt")
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Decrypting directory...",
-          manualStart: globalOptions.verbose ? true : false,
         });
 
         try {
@@ -162,10 +166,9 @@ export default new Command("decrypt")
           loader.stop();
           logger.debugOnly.error(e);
           logger.error(
-            "Error while decrypting\n".concat(
-              "(The directory you are trying to decrypt might not be a valid encrypted directory)"
-            )
+            "Error while decrypting, the given key might be wrong or the directory you are trying to decrypt might not be a valid encrypted directory"
           );
+          await clean();
           process.exit();
         }
       } else if (itemStats.isFile()) {
@@ -198,25 +201,19 @@ export default new Command("decrypt")
         // Loading animation
         let loader = new Loader({
           text: "[loader]  Decrypting file...",
-          manualStart: globalOptions.verbose ? true : false,
         });
 
         try {
-          await new Promise((resolve, reject) =>
-            fs
-              .createReadStream(resolvedItemPath)
-              .pipe(encryption.decryptStream(fs.createWriteStream(newItemPath)))
-              .on("finish", resolve)
-              .on("error", reject)
+          await encryption.decryptStream(
+            fs.createReadStream(resolvedItemPath),
+            fs.createWriteStream(newItemPath)
           );
           loader.stop();
         } catch (e) {
           loader.stop();
           logger.debugOnly.error(e);
           logger.error(
-            "Error while decrypting\n".concat(
-              "(The file you are trying to decrypt might not be a valid encrypted file)"
-            )
+            "Error while decrypting, the given key might be wrong or the file you are trying to decrypt might not be a valid encrypted file"
           );
           process.exit();
         }
