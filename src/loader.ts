@@ -1,36 +1,31 @@
-let availableStyles: { [K in LoaderStyles]: string[] } = {
-  0: "⠖⠲⠴⠦".split(""),
-  1: "⣾⣽⣻⢿⡿⣟⣯⣷".split("").reverse(),
-  2: "▁▂▃▄▅▆▇█▇▆▅▄▃▂▁".split(""),
-};
-
-export enum LoaderStyles {
-  Type0,
-  Type1,
-  Type2,
-}
+/**
+ * Other loader styles:
+ * ⣾⣽⣻⢿⡿⣟⣯⣷
+ * ▁▂▃▄▅▆▇█▇▆▅▄▃▂▁
+ */
 
 export class Loader {
-  private _frames: string[];
+  private _frames = "⠖⠲⠴⠦".split("");
   private _text: string | null;
   private _interval: NodeJS.Timer | null = null;
 
   constructor(options: {
     /**
-     * Text to display while the loader is running
-     * @example hello [loader] !
+     * Text to display while the loader is running,
+     * "[loader]" will be replaced with the loader frames
+     * @example [loader] loading...
      */
     text?: `${string}[loader]${string}`;
     /**
      * Frame style
      */
-    frameType?: LoaderStyles;
     /**
      * Turns on manual mode
      */
     manualStart?: boolean;
   }) {
-    this._frames = availableStyles[options?.frameType ?? LoaderStyles.Type0];
+    if (!options.text?.includes("[loader]"))
+      throw new Error("Invalid loader text format");
     this._text = options.text ?? null;
 
     if (!options.manualStart) this.start();
