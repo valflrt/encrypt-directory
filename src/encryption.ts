@@ -121,11 +121,12 @@ export default class Encryption {
         .on("error", reject)
         .pipe(
           new CustomTransform({
-            transform(chunk) {
+            transform(chunk, enc, callback) {
               if (this.local.isFirstChunk) {
                 this.local.isFirstChunk = false;
                 this.push(Buffer.concat([Buffer.alloc(4), chunk]));
               } else this.push(chunk);
+              callback();
             },
             local: {
               isFirstChunk: true,
@@ -137,12 +138,13 @@ export default class Encryption {
         .on("error", reject)
         .pipe(
           new CustomTransform({
-            transform(chunk: Buffer) {
+            transform(chunk, enc, callback) {
               chunk = Buffer.from(chunk);
               if (this.local.isFirstChunk) {
                 this.local.isFirstChunk = false;
                 this.push(Buffer.concat([iv, chunk]));
               } else this.push(chunk);
+              callback();
             },
             local: {
               isFirstChunk: true,
@@ -172,8 +174,7 @@ export default class Encryption {
         .on("error", reject)
         .pipe(
           new CustomTransform({
-            transform(chunk: Buffer) {
-              chunk = Buffer.from(chunk);
+            transform(chunk, enc, callback) {
               if (!this.local.iv) {
                 this.local.iv = chunk.slice(0, 16);
                 let decipher = crypto.createDecipheriv(
@@ -186,7 +187,7 @@ export default class Encryption {
                   .on("error", reject)
                   .pipe(
                     new CustomTransform({
-                      transform(chunk) {
+                      transform(chunk, enc, callback) {
                         if (this.local.isFirstChunk) {
                           this.local.isFirstChunk = false;
                           if (
@@ -195,9 +196,10 @@ export default class Encryption {
                               Buffer.alloc(4)
                             ) !== 0
                           )
-                            reject("Wrong key");
+                            return callback(new Error("Wrong key"));
                           this.push(chunk.slice(4));
                         } else this.push(chunk);
+                        callback();
                       },
                       local: {
                         isFirstChunk: true,
@@ -210,6 +212,7 @@ export default class Encryption {
 
                 this.push(chunk.slice(16));
               } else this.push(chunk);
+              callback();
             },
           })
         )
