@@ -24,6 +24,7 @@ A simple cli program to encrypt a directory or a file, made with nodejs and type
   - [Features](#features)
   - [Development](#development)
     - [How to build/compile](#how-to-buildcompile)
+  - [License](#license)
 
 ## Usage
 
@@ -56,3 +57,7 @@ You can also get help about commands using `fencryption help [command]` or `fenc
 
 - Use `npm run build` in the project directory to build.
 - Use `npm run build:binaries` to create an executable.
+
+## License
+
+MIT (see [LICENSE](./LICENSE))
