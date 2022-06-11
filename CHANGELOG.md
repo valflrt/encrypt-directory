@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.4
+
+- Improve help descriptions
+- Fix commands encrypt and decrypt: they were displaying success message before the encryption/decryption was really finished
+
+[full changelog](https://github.com/valflrt/Fencryption/compare/v1.4.3...v1.4.4)
+
 ## v1.4.3
 
 - Fix encryption methods: when encrypting and decrypting a stream, only first chunk was encrypted/decrypted and the process remained stuck
