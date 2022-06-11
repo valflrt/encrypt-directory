@@ -37,13 +37,13 @@ A simple cli program to encrypt a file/directory
 
 Options:
   -V, --version                     output the version number
-  --verbose                         verbose mode
-  --debug                           debug mode
+  --verbose                         enable verbose mode
+  --debug                           enable debug mode
   -h, --help                        display help for command
 
 Commands:
-  encrypt|e [options] <path> <key>  encrypts a file/directory
-  decrypt|d [options] <path> <key>  decrypts an encrypted file/directory
+  encrypt|e [options] <path> <key>  encrypt a file/directory
+  decrypt|d [options] <path> <key>  decrypt an encrypted file/directory
   help [command]                    display help for command
 ```
 
