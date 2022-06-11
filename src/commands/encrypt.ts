@@ -12,14 +12,14 @@ import Logger from "../logger";
 
 export default new Command("encrypt")
   .aliases(["e"])
-  .description("encrypts a file/directory")
+  .description("encrypt a file/directory")
 
   .argument("<path>", "path of the file/directory to encrypt")
   .argument("<key>", "key used to encrypt")
 
-  .option("-o, --output [path]", "path of the output directory or file")
+  .option("-o, --output [path]", "set a custom output path")
   .option(
-    "--plain-names",
+    "-n, --plain-names",
     "keep file and directory names plain, do not encrypt them",
     false
   )

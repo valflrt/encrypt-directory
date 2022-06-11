@@ -12,14 +12,14 @@ import Logger from "../logger";
 
 export default new Command("decrypt")
   .aliases(["d"])
-  .description("decrypts an encrypted file/directory")
+  .description("decrypt an encrypted file/directory")
 
-  .argument("<path>", "path of the encrypted directory to decrypt")
+  .argument("<path>", "path of the directory to decrypt")
   .argument("<key>", "key used to decrypt")
 
-  .option("-o, --output [path]", "path of the output directory or file")
+  .option("-o, --output [path]", "set a custom output path")
   .option(
-    "--plain-names",
+    "-n, --plain-names",
     "keep file and directory names plain, do not encrypt them",
     false
   )
