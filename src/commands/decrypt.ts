@@ -114,8 +114,8 @@ export default new Command("decrypt")
          * @param items Items from Dir object
          * @param parentPath Path of the parent directory
          */
-        let loopThroughDir = async (items: ItemArray, parentPath: string) => {
-          await Promise.all(
+        let loopThroughDir = (items: ItemArray, parentPath: string) =>
+          Promise.all(
             items.map(async (i) => {
               // Creates item path
               let newItemPath = pathProgram.join(
@@ -129,7 +129,7 @@ export default new Command("decrypt")
 
               if (i.type === ItemTypes.Dir) {
                 await fsAsync.mkdir(newItemPath, { recursive: true });
-                loopThroughDir(i.items, newItemPath);
+                await loopThroughDir(i.items, newItemPath);
               } else if (i.type === ItemTypes.File) {
                 logger.debugOrVerboseOnly.info(
                   "- decrypting file\n"
@@ -152,9 +152,8 @@ export default new Command("decrypt")
               }
             })
           );
-        };
 
-        // Loading animation
+        // Starts loading animation
         let loader = new Loader({
           text: "[loader]  Decrypting directory...",
         });
