@@ -9,9 +9,11 @@
   </p>
 
   <p align="center">
-    <a href="https://github.com/valflrt/Fencryption/releases/latest"><b>Download</b></a>
-    <br />
     <a href="https://github.com/valflrt/fencryption/issues/new"><b>Report Bug</b></a>
+    <br />
+    <a href="https://github.com/valflrt/Fencryption/blob/master/CHANGELOG.md"><b>Changelog</b></a>
+    <br />
+    <a href="https://github.com/valflrt/Fencryption/releases/latest"><b>Download</b></a>
   </p>
 </p>
 
