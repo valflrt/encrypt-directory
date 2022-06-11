@@ -8,5 +8,5 @@ export default program
 
   .showSuggestionAfterError(true)
 
-  .option("--verbose", "verbose mode")
-  .option("--debug", "debug mode");
+  .option("--verbose", "enable verbose mode")
+  .option("--debug", "enable debug mode");
