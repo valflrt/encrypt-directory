@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.5
+
+- Add timer to measure encryption/decryption duration
+- Remove loader (spinner)
+- Change version options from `-V, --version` to `-v, --version`
+
+[full changelog](https://github.com/valflrt/Fencryption/compare/v1.4.4...v1.4.5)
+
 ## v1.4.4
 
 - Improve help descriptions
