@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.6
+
+- Fix auto release github workflow file
+
+[full changelog](https://github.com/valflrt/Fencryption/compare/v1.4.5...v1.4.6)
+
 ## v1.4.5
 
 - Add timer to measure encryption/decryption duration
