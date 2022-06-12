@@ -5,10 +5,11 @@ import fsAsync from "fs/promises";
 import pathProgram from "path";
 
 import Encryption from "../encryption";
-import { ItemArray, ItemTypes, Tree } from "../tree";
+import Tree, { ItemArray, ItemTypes } from "../tree";
 
-import { Loader } from "../loader";
 import Logger from "../logger";
+import Timer from "../timer";
+import { Loader } from "../loader";
 
 export default new Command("encrypt")
   .aliases(["e"])
@@ -26,8 +27,8 @@ export default new Command("encrypt")
 
   .action(async (path, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
-
     let logger = new Logger(globalOptions);
+    let timer = new Timer();
 
     logger.debugOnly.debug("Given options:", globalOptions);
 
@@ -106,11 +107,12 @@ export default new Command("encrypt")
         logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
 
         // A function to clean, here remove output directory
-        let clean = () => fsAsync.rmdir(outputPath);
+        let clean = () =>
+          fsAsync.rm(outputPath, { recursive: true, force: true });
 
         /**
-         * Recursion function to encrypt each file in the
-         * directory
+         * Recursion function to encrypt all the files in
+         * the directory
          * @param items Items from Dir object
          * @param parentPath Path of the parent directory
          */
@@ -159,14 +161,16 @@ export default new Command("encrypt")
         });
 
         try {
+          timer.start();
           await loopThroughDir(dir.items, outputPath);
-          loader.stop();
         } catch (e) {
           loader.stop();
           logger.debugOnly.error(e);
           logger.error("Error while encrypting");
           await clean();
           process.exit();
+        } finally {
+          loader.stop();
         }
       } else if (itemStats.isFile()) {
         // Creates output path
@@ -201,6 +205,7 @@ export default new Command("encrypt")
         });
 
         try {
+          timer.start();
           await encryption.encryptStream(
             fs.createReadStream(resolvedItemPath),
             fs.createWriteStream(newItemPath)
@@ -216,13 +221,13 @@ export default new Command("encrypt")
         logger.error("This program only supports files and directories");
         process.exit();
       }
-
-      logger.success("Done");
     } catch (e) {
       logger.debugOnly.error(e);
       logger.error(
         "Unknown error occurred (rerun with --debug for debug information)"
       );
       process.exit();
+    } finally {
+      logger.success(`Done (in ${timer.elapsedTime}ms)`);
     }
   });
