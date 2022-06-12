@@ -9,7 +9,6 @@ import Tree, { ItemArray, ItemTypes } from "../tree";
 
 import Logger from "../logger";
 import Timer from "../timer";
-import { Loader } from "../loader";
 
 export default new Command("encrypt")
   .aliases(["e"])
@@ -60,8 +59,6 @@ export default new Command("encrypt")
        */
       let itemStats = await fsAsync.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
-        logger.info("Reading directory...");
-
         // Generates directory tree
         let dir;
         try {
@@ -155,22 +152,16 @@ export default new Command("encrypt")
             })
           );
 
-        // Starts loading animation
-        let loader = new Loader({
-          text: "[loader]  Encrypting directory...",
-        });
+        logger.info("Encrypting...");
 
         try {
           timer.start();
           await loopThroughDir(dir.items, outputPath);
         } catch (e) {
-          loader.stop();
           logger.debugOnly.error(e);
           logger.error("Error while encrypting");
           await clean();
           process.exit();
-        } finally {
-          loader.stop();
         }
       } else if (itemStats.isFile()) {
         // Creates output path
@@ -199,10 +190,7 @@ export default new Command("encrypt")
             .concat(`  to "${newItemPath}"`)
         );
 
-        // Loading animation
-        let loader = new Loader({
-          text: "[loader]  Encrypting file...",
-        });
+        logger.info("Encrypting...");
 
         try {
           timer.start();
@@ -210,9 +198,7 @@ export default new Command("encrypt")
             fs.createReadStream(resolvedItemPath),
             fs.createWriteStream(newItemPath)
           );
-          loader.stop();
         } catch (e) {
-          loader.stop();
           logger.debugOnly.error(e);
           logger.error("Error while encrypting");
           process.exit();

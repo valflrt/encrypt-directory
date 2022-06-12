@@ -9,7 +9,6 @@ import Tree, { ItemArray, ItemTypes } from "../tree";
 
 import Logger from "../logger";
 import Timer from "../timer";
-import { Loader } from "../loader";
 
 export default new Command("decrypt")
   .aliases(["d"])
@@ -60,8 +59,6 @@ export default new Command("decrypt")
        */
       let itemStats = await fsAsync.stat(resolvedItemPath);
       if (itemStats.isDirectory()) {
-        logger.info("Reading directory...");
-
         // Generates directory tree
         let dir;
         try {
@@ -155,17 +152,12 @@ export default new Command("decrypt")
             })
           );
 
-        // Starts loading animation
-        let loader = new Loader({
-          text: "[loader]  Decrypting directory...",
-        });
+        logger.info("Decrypting...");
 
         try {
           timer.start();
           await loopThroughDir(dir.items, outputPath);
-          loader.stop();
         } catch (e) {
-          loader.stop();
           logger.debugOnly.error(e);
           logger.error(
             "Error while decrypting, the given key might be wrong or the directory you are trying to decrypt might not be a valid encrypted directory"
@@ -200,10 +192,7 @@ export default new Command("decrypt")
             .concat(`  to "${newItemPath}"`)
         );
 
-        // Loading animation
-        let loader = new Loader({
-          text: "[loader]  Decrypting file...",
-        });
+        logger.info("Decrypting...");
 
         try {
           timer.start();
@@ -211,9 +200,7 @@ export default new Command("decrypt")
             fs.createReadStream(resolvedItemPath),
             fs.createWriteStream(newItemPath)
           );
-          loader.stop();
         } catch (e) {
-          loader.stop();
           logger.debugOnly.error(e);
           logger.error(
             "Error while decrypting, the given key might be wrong or the file you are trying to decrypt might not be a valid encrypted file"

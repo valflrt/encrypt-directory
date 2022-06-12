@@ -6,15 +6,32 @@ export interface GivenCLIOptions {
   debug?: boolean;
 }
 
+export interface LogMethodsOptions {
+  /**
+   * Wether to log or no.
+   */
+  log?: boolean;
+  /**
+   * Wether to show status labels or no.
+   */
+  showLabels?: boolean;
+}
+
 export class LogMethods {
   private _log: boolean;
+  private _showLabels: boolean;
 
-  constructor(log?: boolean) {
-    this._log = log ?? true;
+  /**
+   * Creates LogMethods object
+   * @param options LogMethods options {@link LogMethodsOptions}
+   */
+  constructor(options?: LogMethodsOptions) {
+    this._log = options?.log ?? true;
+    this._showLabels = options?.showLabels ?? true;
   }
 
   /**
-   * Logs
+   * Simply logs (quasi-duplicate of console.log)
    * @param items Items to log
    */
   public log(...items: any[]) {
@@ -22,7 +39,7 @@ export class LogMethods {
   }
 
   /**
-   * Logs success
+   * Logs with success label
    * @param items Items to log
    */
   public success(...items: any[]) {
@@ -30,7 +47,7 @@ export class LogMethods {
   }
 
   /**
-   * Logs info
+   * Logs with info label
    * @param items Items to log
    */
   public info(...items: any[]) {
@@ -38,7 +55,7 @@ export class LogMethods {
   }
 
   /**
-   * Logs warn
+   * Logs with warn label
    * @param items Items to log
    */
   public warn(...items: any[]) {
@@ -46,7 +63,7 @@ export class LogMethods {
   }
 
   /**
-   * Logs error
+   * Logs with error label
    * @param items Items to log
    */
   public error(...items: any[]) {
@@ -54,7 +71,7 @@ export class LogMethods {
   }
 
   /**
-   * Logs debug
+   * Logs with debug label
    * @param items Items to log
    */
   public debug(...items: any[]) {
@@ -70,31 +87,27 @@ export class LogMethods {
     items: any[],
     type: "info" | "success" | "warn" | "error" | "debug" = "info"
   ) {
-    let statusText;
-    let stringStart;
+    let label = " ".concat(this._showLabels ? type.toUpperCase() : "");
+
+    let startSequence;
     if (type === "success") {
-      statusText = " SUCCESS ";
-      stringStart = statusText.green.inverse.concat(" ");
+      startSequence = label.green.inverse.concat(" ");
     } else if (type === "warn") {
-      statusText = " WARN ";
-      stringStart = statusText.yellow.inverse.concat(" ");
+      startSequence = label.yellow.inverse.concat(" ");
     } else if (type === "error") {
-      statusText = " ERROR ";
-      stringStart = statusText.red.inverse.concat(" ");
+      startSequence = label.red.inverse.concat(" ");
     } else if (type === "debug") {
-      statusText = " DEBUG ";
-      stringStart = statusText.blue.inverse.concat(" ");
+      startSequence = label.blue.inverse.concat(" ");
     } else {
-      statusText = " INFO ";
-      stringStart = statusText.white.inverse.concat(" ");
+      startSequence = label.white.inverse.concat(" ");
     }
 
-    return stringStart.concat(
+    return startSequence.concat(
       items
         .map((i) => util.formatWithOptions({ colors: true }, i))
         .join(" ")
         .split(/\n/g)
-        .join("\n".concat(" ".repeat(statusText.length + 1)))
+        .join("\n".concat(" ".repeat(label.length + 1)))
     );
   }
 }
@@ -103,7 +116,9 @@ export default class Logger extends LogMethods {
   private _CLIOptions: GivenCLIOptions;
 
   constructor(CLIOptions: GivenCLIOptions) {
-    super();
+    super({
+      showLabels: !!CLIOptions.debug || !!CLIOptions.verbose,
+    });
     this._CLIOptions = CLIOptions;
   }
 
@@ -112,7 +127,9 @@ export default class Logger extends LogMethods {
    * is specified
    */
   public get debugOnly() {
-    return new LogMethods(!!this._CLIOptions.debug);
+    return new LogMethods({
+      log: !!this._CLIOptions.debug,
+    });
   }
 
   /**
@@ -120,7 +137,9 @@ export default class Logger extends LogMethods {
    * option is specified
    */
   public get verboseOnly() {
-    return new LogMethods(!!this._CLIOptions.verbose);
+    return new LogMethods({
+      log: !!this._CLIOptions.verbose,
+    });
   }
 
   /**
@@ -128,9 +147,9 @@ export default class Logger extends LogMethods {
    * --verbose options are specified
    */
   public get debugOrVerboseOnly() {
-    return new LogMethods(
-      !!this._CLIOptions.debug || !!this._CLIOptions.verbose
-    );
+    return new LogMethods({
+      log: !!this._CLIOptions.debug || !!this._CLIOptions.verbose,
+    });
   }
 
   /**
@@ -138,8 +157,8 @@ export default class Logger extends LogMethods {
    * --verbose options are specified
    */
   public get debugAndVerboseOnly() {
-    return new LogMethods(
-      !!this._CLIOptions.debug && !!this._CLIOptions.verbose
-    );
+    return new LogMethods({
+      log: !!this._CLIOptions.debug && !!this._CLIOptions.verbose,
+    });
   }
 }
