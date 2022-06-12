@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "npm ci && rm -rf build && npx tsc",
-    "build:binaries": "npm run build && rm -rf binaries && npx pkg . && ./scripts/compress-binaries.sh"
+    "build:binaries": "npm run build && rm -rf binaries && npx pkg . && sh scripts/compress-binaries.sh"
   },
   "author": "valflrt",
   "license": "MIT",
