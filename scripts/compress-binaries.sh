@@ -1,5 +1,7 @@
-mv binaries/fencryption-linux binaries/fencryption
-tar cvzf binaries/fencryption-linux.tar.gz binaries/fencryption
+cd ./binaries
 
-mv binaries/fencryption-win.exe binaries/fencryption.exe
-tar cvzf binaries/fencryption-win.tar.gz binaries/fencryption.exe
+mv fencryption-linux fencryption
+tar cvzf fencryption-linux.tar.gz fencryption
+
+mv fencryption-win.exe fencryption.exe
+tar cvzf fencryption-win.tar.gz fencryption.exe
