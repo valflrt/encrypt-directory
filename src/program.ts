@@ -4,7 +4,7 @@ import packageJson from "../package.json";
 export default program
   .name(packageJson.name)
   .description(packageJson.description)
-  .version(packageJson.version)
+  .version(packageJson.version, "-v, --version")
 
   .showSuggestionAfterError(true)
 
