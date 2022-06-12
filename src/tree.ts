@@ -46,7 +46,7 @@ export interface UnknownItem extends Item {
 export type Items = File | Dir | UnknownItem;
 export type ItemArray = (File | Dir | UnknownItem)[];
 
-export class Tree {
+export default class Tree {
   private _path: string;
 
   /**
@@ -61,7 +61,8 @@ export class Tree {
    * Returns an object representation of the tree
    */
   public async toObject() {
-    if (fs.statSync(this._path).isFile()) return null;
+    if (fs.statSync(this._path).isFile())
+      throw new Error("Can't make file tree from a file !");
 
     let loopThroughDirectories = async (
       dirPath: string
