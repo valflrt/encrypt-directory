@@ -4,12 +4,12 @@ import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
 
-import Encryption from "../encryption";
-import Tree, { ItemArray, ItemTypes } from "../tree";
-import Quantify from "../quantify";
+import Encryption from "../Encryption";
+import Tree, { ItemArray, ItemTypes } from "../Tree";
+import FileSize from "../FileSize";
 
-import Logger from "../logger";
-import Timer from "../timer";
+import Logger from "../Logger";
+import Timer from "../Timer";
 
 export default new Command("encrypt")
   .aliases(["e"])
@@ -24,11 +24,6 @@ export default new Command("encrypt")
     false
   )
   .option("-o, --output [path]", "set a custom output path")
-  .option(
-    "-n, --plain-names",
-    "keep file and directory names plain, do not encrypt them",
-    false
-  )
 
   .action(async (rawInputPath, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
@@ -36,6 +31,8 @@ export default new Command("encrypt")
     let timer = new Timer();
 
     logger.debugOnly.debug("Given options:", globalOptions);
+
+    timer.start();
 
     try {
       // Tries to resolve the given path
@@ -119,26 +116,11 @@ export default new Command("encrypt")
           }
         };
 
-        // Creates config file
-        try {
-          await fsAsync.writeFile(
-            pathProgram.join(outputPath, "_config.json"),
-            JSON.stringify({
-              test: encryption.encrypt(Buffer.alloc(0)).toString("base64"),
-              plainNames: options.plainNames,
-            })
-          );
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to create config file.");
-          process.exit();
-        }
-
         // Counts number of items in the directory
         logger.info(
-          `Found ${Tree.getNumberOfEntries(
-            dir
-          )} items (totalizing ${Quantify.parseNumber(dir.size)}B).`
+          `Found ${Tree.getNumberOfFiles(dir)} items (totalizing ${new FileSize(
+            dir.size
+          )}).`
         );
 
         /**
@@ -153,11 +135,7 @@ export default new Command("encrypt")
               // Creates item path
               let newItemPath = pathProgram.join(
                 parentPath,
-                !options.plainNames
-                  ? encryption
-                      .encrypt(Buffer.from(i.name))
-                      .toString("base64url")
-                  : i.name
+                encryption.encrypt(Buffer.from(i.name)).toString("base64url")
               );
 
               if (i.type === ItemTypes.Dir) {
@@ -169,19 +147,10 @@ export default new Command("encrypt")
                     .concat(`  from "${i.path}"\n`)
                     .concat(`  to "${newItemPath}"`)
                 );
-                try {
-                  await encryption.encryptStream(
-                    fs.createReadStream(i.path),
-                    fs.createWriteStream(newItemPath)
-                  );
-                } catch (e) {
-                  logger.debugOnly.error(e);
-                  logger.error(
-                    "Failed to decrypt, the given key might be wrong."
-                  );
-                  await clean();
-                  process.exit();
-                }
+                await encryption.encryptStream(
+                  fs.createReadStream(i.path),
+                  fs.createWriteStream(newItemPath)
+                );
               }
             })
           );
@@ -189,7 +158,6 @@ export default new Command("encrypt")
         logger.info("Encrypting...");
 
         try {
-          timer.start();
           await loopThroughDir(dir.items, outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
@@ -248,14 +216,11 @@ export default new Command("encrypt")
             .concat(`  to "${outputPath}"`)
         );
 
-        logger.info(
-          `The file to encrypt is ${Quantify.parseNumber(fileStats.size)}B`
-        );
+        logger.info(`The file to encrypt is ${new FileSize(fileStats.size)}`);
 
         logger.info("Encrypting...");
 
         try {
-          timer.start();
           await encryption.encryptStream(
             fs.createReadStream(inputPath),
             fs.createWriteStream(outputPath)

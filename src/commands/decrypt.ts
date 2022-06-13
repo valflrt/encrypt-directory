@@ -4,12 +4,12 @@ import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
 
-import Encryption from "../encryption";
-import Tree, { ItemArray, ItemTypes } from "../tree";
-import Quantify from "../quantify";
+import Encryption from "../Encryption";
+import Tree, { ItemArray, ItemTypes } from "../Tree";
+import FileSize from "../FileSize";
 
-import Logger from "../logger";
-import Timer from "../timer";
+import Logger from "../Logger";
+import Timer from "../Timer";
 
 export default new Command("decrypt")
   .aliases(["d"])
@@ -31,6 +31,8 @@ export default new Command("decrypt")
     let timer = new Timer();
 
     logger.debugOnly.debug("Given options:", globalOptions);
+
+    timer.start();
 
     try {
       // Tries to resolve the given path
@@ -60,8 +62,11 @@ export default new Command("decrypt")
       if (itemStats.isDirectory()) {
         // Generates directory tree
         let dir;
+        let flatDir;
         try {
-          dir = await new Tree(inputPath).toObject();
+          let tree = new Tree(inputPath);
+          dir = await tree.toObject();
+          flatDir = await tree.toFlatArray();
         } catch (e) {
           logger.debugOnly.error(e);
           logger.error("Failed to read directory.");
@@ -114,34 +119,28 @@ export default new Command("decrypt")
           }
         };
 
-        // Reads config file
-        let plainNames = false;
-        try {
-          let config = JSON.parse(
-            (
-              await fsAsync.readFile(
-                pathProgram.join(inputPath, "_config.json")
-              )
-            ).toString("utf-8")
-          );
-          if (config.plainNames === true) plainNames = true;
-          if (!encryption.validate(Buffer.from(config.test, "base64"))) {
-            logger.error("Wrong key, you should be ashamed.");
-            await clean();
-            process.exit();
-          }
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to create config file.");
-          process.exit();
-        }
+        logger.info("Validating files...");
 
-        // Counts number of items in the directory
-        logger.info(
-          `Found ${Tree.getNumberOfEntries(
-            dir
-          )} items (totalizing ${Quantify.parseNumber(dir.size)}B).`
-        );
+        // checks if every file in the directory is valid
+        let allValid = (
+          await Promise.all(
+            flatDir.map((i) =>
+              encryption.validateStream(fs.createReadStream(i.path))
+            )
+          )
+        ).every((i) => !!i);
+        if (!allValid) {
+          logger.error(
+            "Invalid files might have been found or the given key is wrong."
+          );
+          await clean();
+          process.exit();
+        } else
+          logger.info(
+            `All files are valid, found ${Tree.getNumberOfFiles(
+              dir
+            )} items (totalizing ${new FileSize(dir.size)}).`
+          );
 
         /**
          * Recursion function to decrypt all the files in
@@ -152,17 +151,12 @@ export default new Command("decrypt")
         let loopThroughDir = (items: ItemArray, parentPath: string) =>
           Promise.all(
             items.map(async (i) => {
-              if (i.name === "_config.json") return;
-
               // Creates item path
-              let newItemPath;
-              newItemPath = pathProgram.join(
+              let newItemPath = pathProgram.join(
                 parentPath,
-                !plainNames
-                  ? encryption
-                      .decrypt(Buffer.from(i.name, "base64url"))
-                      .toString("utf8")
-                  : i.name
+                encryption
+                  .decrypt(Buffer.from(i.name, "base64url"))
+                  .toString("utf8")
               );
 
               if (i.type === ItemTypes.Dir) {
@@ -174,19 +168,10 @@ export default new Command("decrypt")
                     .concat(`  from "${i.path}"\n`)
                     .concat(`  to "${newItemPath}"`)
                 );
-                try {
-                  await encryption.decryptStream(
-                    fs.createReadStream(i.path),
-                    fs.createWriteStream(newItemPath)
-                  );
-                } catch (e) {
-                  logger.debugOnly.error(e);
-                  logger.error(
-                    "Failed to decrypt, the given key might be wrong."
-                  );
-                  await clean();
-                  process.exit();
-                }
+                await encryption.decryptStream(
+                  fs.createReadStream(i.path),
+                  fs.createWriteStream(newItemPath)
+                );
               }
             })
           );
@@ -194,13 +179,10 @@ export default new Command("decrypt")
         logger.info("Decrypting...");
 
         try {
-          timer.start();
           await loopThroughDir(dir.items, outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error(
-            "Error while decrypting, the given key might be wrong or the directory you are trying to decrypt might not be a valid encrypted directory."
-          );
+          logger.error("Error while decrypting.");
           await clean();
           process.exit();
         }
@@ -240,13 +222,15 @@ export default new Command("decrypt")
           }
         }
 
+        // Validates file
         if (
           !(await encryption.validateStream(fs.createReadStream(inputPath)))
         ) {
-          logger.error("Wrong key, you should be ashamed.");
+          logger.error("Invalid file or wrong key.");
           process.exit();
         }
 
+        // Reads file information
         let fileStats;
         try {
           fileStats = await fsAsync.stat(inputPath);
@@ -262,23 +246,18 @@ export default new Command("decrypt")
             .concat(`  to "${outputPath}"`)
         );
 
-        logger.info(
-          `The file to decrypt is ${Quantify.parseNumber(fileStats.size)}B`
-        );
+        logger.info(`The file to decrypt is ${new FileSize(fileStats.size)}`);
 
         logger.info("Decrypting...");
 
         try {
-          timer.start();
           await encryption.decryptStream(
             fs.createReadStream(inputPath),
             fs.createWriteStream(outputPath)
           );
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error(
-            "Error while decrypting, the given key might be wrong or the file you are trying to decrypt might not be a valid encrypted file."
-          );
+          logger.error("Error while decrypting.");
           process.exit();
         }
       } else {
