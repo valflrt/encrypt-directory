@@ -106,6 +106,19 @@ export default class Encryption {
   }
 
   /**
+   * Validates an encrypted Buffer
+   * @param encrypted Encrypted Buffer to validate
+   */
+  public validate(encrypted: Buffer) {
+    let iv = encrypted.slice(0, 16);
+    encrypted = encrypted.slice(16);
+    let decipher = crypto.createDecipheriv(this.algorithm, this._hashedKey, iv);
+    let result = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    if (Buffer.compare(result.slice(0, 4), Buffer.alloc(4)) !== 0) return false;
+    else return true;
+  }
+
+  /**
    * Encrypts a Stream
    * @param input Plain input (Readable stream) to encrypt
    * @param output Output (Writable stream) to pipe the
@@ -182,6 +195,7 @@ export default class Encryption {
                   hashedKey,
                   this.local.iv
                 );
+
                 this.on("error", reject)
                   .pipe(decipher)
                   .on("error", reject)
@@ -212,6 +226,52 @@ export default class Encryption {
 
                 this.push(chunk.slice(16));
               } else this.push(chunk);
+              callback();
+            },
+          })
+        )
+    );
+  }
+
+  /**
+   * Validates a stream
+   * @param input Encrypted input (Readable stream) to
+   * validate
+   */
+  public validateStream(input: Readable) {
+    let algorithm = this.algorithm;
+    let hashedKey = this._hashedKey;
+
+    return new Promise<boolean>((resolve, reject) =>
+      input
+        .on("end", resolve)
+        .on("error", reject)
+        .pipe(
+          new CustomTransform({
+            transform(chunk, enc, callback) {
+              let iv = chunk.slice(0, 16);
+              let decipher = crypto.createDecipheriv(algorithm, hashedKey, iv);
+
+              this.on("error", reject)
+                .pipe(decipher)
+                .on("error", reject)
+                .pipe(
+                  new CustomTransform({
+                    transform(chunk, enc, callback) {
+                      if (
+                        Buffer.compare(chunk.slice(0, 4), Buffer.alloc(4)) !== 0
+                      )
+                        resolve(false);
+                      else resolve(true);
+                      this.end();
+                      this.destroy();
+                      callback();
+                    },
+                  })
+                )
+                .on("error", reject);
+
+              this.push(chunk.slice(16));
               callback();
             },
           })
