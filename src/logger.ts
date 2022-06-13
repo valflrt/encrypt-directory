@@ -1,11 +1,6 @@
 import "colors";
 import util from "util";
 
-export interface GivenCLIOptions {
-  verbose?: boolean;
-  debug?: boolean;
-}
-
 export interface LogMethodsOptions {
   /**
    * Wether to log or no.
@@ -87,7 +82,9 @@ export class LogMethods {
     items: any[],
     type: "info" | "success" | "warn" | "error" | "debug" = "info"
   ) {
-    let label = " ".concat(this._showLabels ? type.toUpperCase() : "");
+    let label = " ".concat(
+      this._showLabels ? type.toUpperCase().concat(" ") : ""
+    );
 
     let startSequence;
     if (type === "success") {
@@ -107,19 +104,28 @@ export class LogMethods {
         .map((i) => util.formatWithOptions({ colors: true }, i))
         .join(" ")
         .split(/\n/g)
-        .join("\n".concat(" ".repeat(label.length + 1)))
+        .join(
+          "\n".concat(
+            this._showLabels ? " ".repeat(label.length + 1) : startSequence
+          )
+        )
     );
   }
+}
+
+export interface GivenCLIOptions {
+  verbose?: boolean;
+  debug?: boolean;
 }
 
 export default class Logger extends LogMethods {
   private _CLIOptions: GivenCLIOptions;
 
-  constructor(CLIOptions: GivenCLIOptions) {
+  constructor(CLIOptions?: GivenCLIOptions) {
     super({
-      showLabels: !!CLIOptions.debug || !!CLIOptions.verbose,
+      showLabels: !!CLIOptions?.debug || !!CLIOptions?.verbose,
     });
-    this._CLIOptions = CLIOptions;
+    this._CLIOptions = CLIOptions ?? {};
   }
 
   /**
