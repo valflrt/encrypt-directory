@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fsAsync from "fs/promises";
+import pathProgram from "path";
 
 /**
  * Item types
@@ -7,14 +7,14 @@ import path from "path";
 export enum ItemTypes {
   Dir,
   File,
-  Unknown,
+  UnknownItem,
 }
 
 /**
  * Item type – Do not use for specific items. (`Dir | File | Unknown`)
  */
 export interface Item {
-  type: ItemTypes.Dir | ItemTypes.File | ItemTypes.Unknown;
+  type: ItemTypes.Dir | ItemTypes.File | ItemTypes.UnknownItem;
   path: string;
   name: string;
 }
@@ -25,6 +25,7 @@ export interface Item {
 export interface File extends Item {
   type: ItemTypes.File;
   ext: string | null;
+  size: number;
 }
 
 /**
@@ -33,6 +34,7 @@ export interface File extends Item {
 export interface Dir extends Item {
   type: ItemTypes.Dir;
   items: ItemArray;
+  size: number;
 }
 
 /**
@@ -40,10 +42,10 @@ export interface Dir extends Item {
  * nor a Dir (example: symbolic links, ...)
  */
 export interface UnknownItem extends Item {
-  type: ItemTypes.Unknown;
+  type: ItemTypes.UnknownItem;
 }
 
-export type Items = File | Dir | UnknownItem;
+export type AnyItem = File | Dir | UnknownItem;
 export type ItemArray = (File | Dir | UnknownItem)[];
 
 export default class Tree {
@@ -60,49 +62,70 @@ export default class Tree {
   /**
    * Returns an object representation of the tree
    */
-  public async toObject() {
-    if (fs.statSync(this._path).isFile())
+  public async toObject(): Promise<Dir> {
+    if ((await fsAsync.stat(this._path)).isFile())
       throw new Error("Can't make file tree from a file !");
 
     let loopThroughDirectories = async (
       dirPath: string
-    ): Promise<ItemArray> => {
-      return await Promise.all(
-        fs
-          .readdirSync(dirPath, {
+    ): Promise<{ size: number; items: ItemArray }> => {
+      let dir = await Promise.all(
+        (
+          await fsAsync.readdir(dirPath, {
             withFileTypes: true,
           })
-          .map(async (i) => {
-            let itemPath = path.join(dirPath, i.name);
-            if (i.isDirectory())
-              return {
-                type: ItemTypes.Dir,
-                path: itemPath,
-                name: i.name,
-                items: await loopThroughDirectories(itemPath),
-              };
-            else if (i.isFile())
-              return {
-                type: ItemTypes.File,
-                path: itemPath,
-                name: i.name,
-                ext: path.extname(i.name) !== "" ? path.extname(i.name) : null,
-              };
-            else
-              return {
-                type: ItemTypes.Unknown,
-                path: itemPath,
-                name: i.name,
-              };
-          })
+        ).map<Promise<AnyItem>>(async (i) => {
+          let itemPath = pathProgram.join(dirPath, i.name);
+          if (i.isDirectory()) {
+            let { items, size } = await loopThroughDirectories(itemPath);
+            return {
+              type: ItemTypes.Dir,
+              path: itemPath,
+              name: i.name,
+              items,
+              size,
+            };
+          } else if (i.isFile())
+            return {
+              type: ItemTypes.File,
+              path: itemPath,
+              name: i.name,
+              ext:
+                pathProgram.extname(i.name) !== ""
+                  ? pathProgram.extname(i.name)
+                  : null,
+              size: (await fsAsync.stat(itemPath)).size,
+            };
+          else
+            return {
+              type: ItemTypes.UnknownItem,
+              path: itemPath,
+              name: i.name,
+            };
+        })
       );
+
+      return {
+        items: dir,
+        size: dir.reduce(
+          (acc, v) =>
+            v.type === ItemTypes.File || v.type === ItemTypes.Dir
+              ? acc + v.size
+              : acc,
+          0
+        ),
+      };
     };
+
+    let { items, size: totalSize } = await loopThroughDirectories(this._path);
 
     return {
       type: ItemTypes.Dir,
-      path: path.normalize(this._path),
-      items: await loopThroughDirectories(this._path),
-    } as Dir;
+      name: pathProgram.parse(this._path).name,
+      path: pathProgram.normalize(this._path),
+      items,
+      size: totalSize,
+    };
   }
 
   /**
