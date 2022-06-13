@@ -186,24 +186,22 @@ export default class Tree {
       );
     };
 
-    let dir = await this.toObject();
-    if (!dir) return null;
+    loopTroughObject(await this.toObject());
 
-    loopTroughObject(dir);
-
-    return flatArray ?? null;
+    return flatArray;
   }
 
   /**
    * Returns the number of entries in the given Dir object
    * @param dir Dir object
    */
-  public static getNumberOfEntries(dir: Dir): number {
+  public static getNumberOfFiles(dir: Dir): number {
     let loopThroughItems = (items: ItemArray): number =>
       items.reduce<number>((acc, i) => {
         if (i.type === ItemTypes.Dir) {
           return acc + loopThroughItems(i.items);
-        } else return acc + 1;
+        } else if (i.type === ItemTypes.UnknownItem) return acc;
+        else return acc + 1;
       }, 0);
     return loopThroughItems(dir.items);
   }
