@@ -6,6 +6,7 @@ import pathProgram from "path";
 
 import Encryption from "../encryption";
 import Tree, { ItemArray, ItemTypes } from "../tree";
+import Quantify from "../quantify";
 
 import Logger from "../logger";
 import Timer from "../timer";
@@ -17,14 +18,14 @@ export default new Command("decrypt")
   .argument("<path>", "path of the directory to decrypt")
   .argument("<key>", "key used to decrypt")
 
-  .option("-o, --output [path]", "set a custom output path")
   .option(
-    "-n, --plain-names",
-    "keep file and directory names plain, do not encrypt them",
+    "-f, --force",
+    "force operation (overwrite the output directory if it already exists)",
     false
   )
+  .option("-o, --output [path]", "set a custom output path")
 
-  .action(async (path, key, options, cmd) => {
+  .action(async (rawInputPath, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
     let logger = new Logger(globalOptions);
     let timer = new Timer();
@@ -32,21 +33,19 @@ export default new Command("decrypt")
     logger.debugOnly.debug("Given options:", globalOptions);
 
     try {
-      // Resolves the given path
-      let resolvedItemPath: string;
+      // Tries to resolve the given path
+      let inputPath: string;
       try {
-        resolvedItemPath = pathProgram.resolve(path);
+        inputPath = pathProgram.resolve(rawInputPath);
       } catch (e) {
         logger.debugOnly.error(e);
-        logger.error("Invalid path !");
+        logger.error(`Invalid input path`);
         process.exit();
       }
 
       // Checks if the item exists
-      if (!existsSync(resolvedItemPath)) {
-        logger.error(
-          `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
-        );
+      if (!existsSync(inputPath)) {
+        logger.error(`This item doesn't exist.\n(path: ${inputPath})`);
         process.exit();
       }
 
@@ -57,19 +56,15 @@ export default new Command("decrypt")
        * Check if the item is a directory, a file or
        * something else
        */
-      let itemStats = await fsAsync.stat(resolvedItemPath);
+      let itemStats = await fsAsync.stat(inputPath);
       if (itemStats.isDirectory()) {
         // Generates directory tree
         let dir;
         try {
-          dir = await new Tree(resolvedItemPath).toObject();
-          if (dir === null) {
-            logger.error("Failed to read directory !");
-            process.exit();
-          }
+          dir = await new Tree(inputPath).toObject();
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Failed to read directory !");
+          logger.error("Failed to read directory.");
           process.exit();
         }
 
@@ -77,18 +72,27 @@ export default new Command("decrypt")
         try {
           outputPath = options.output
             ? pathProgram.resolve(options.output)
-            : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
+            : inputPath.replace(".encrypted", "").concat(".decrypted");
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Failed to resolve given output path");
+          logger.error("Failed to resolve given output path.");
           process.exit();
         }
         // Checks if the "decrypted" directory already exists
         if (existsSync(outputPath)) {
-          logger.error(
-            `The decrypted directory already exists. Please delete it and try again.\n(path: ${outputPath})`
-          );
-          process.exit();
+          if (options.force) {
+            try {
+              await fsAsync.rm(outputPath, { force: true, recursive: true });
+            } catch (e) {
+              logger.debugOnly.error(e);
+              logger.error("Failed to overwrite the output directory.");
+            }
+          } else {
+            logger.error(
+              `The output directory already exists.\n(path: ${outputPath})`
+            );
+            process.exit();
+          }
         }
 
         // Creates base directory (typically [name of the dir to decrypt].decrypted)
@@ -96,16 +100,48 @@ export default new Command("decrypt")
           await fsAsync.mkdir(outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Failed to create base directory");
+          logger.error("Failed to create base directory.");
+          process.exit();
+        }
+
+        // A function to clean, here remove output directory
+        let clean = async () => {
+          try {
+            await fsAsync.rm(outputPath, { recursive: true, force: true });
+          } catch (e) {
+            logger.debugOnly.error(e);
+            logger.error("Failed to clean up.");
+          }
+        };
+
+        // Reads config file
+        let plainNames = false;
+        try {
+          let config = JSON.parse(
+            (
+              await fsAsync.readFile(
+                pathProgram.join(inputPath, "_config.json")
+              )
+            ).toString("utf-8")
+          );
+          if (config.plainNames === true) plainNames = true;
+          if (!encryption.validate(Buffer.from(config.test, "base64"))) {
+            logger.error("Wrong key, you should be ashamed.");
+            await clean();
+            process.exit();
+          }
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error("Failed to create config file.");
           process.exit();
         }
 
         // Counts number of items in the directory
-        logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
-
-        // A function to clean, here remove output directory
-        let clean = () =>
-          fsAsync.rm(outputPath, { recursive: true, force: true });
+        logger.info(
+          `Found ${Tree.getNumberOfEntries(
+            dir
+          )} items (totalizing ${Quantify.parseNumber(dir.size)}B).`
+        );
 
         /**
          * Recursion function to decrypt all the files in
@@ -116,10 +152,13 @@ export default new Command("decrypt")
         let loopThroughDir = (items: ItemArray, parentPath: string) =>
           Promise.all(
             items.map(async (i) => {
+              if (i.name === "_config.json") return;
+
               // Creates item path
-              let newItemPath = pathProgram.join(
+              let newItemPath;
+              newItemPath = pathProgram.join(
                 parentPath,
-                !options.plainNames
+                !plainNames
                   ? encryption
                       .decrypt(Buffer.from(i.name, "base64url"))
                       .toString("utf8")
@@ -160,36 +199,71 @@ export default new Command("decrypt")
         } catch (e) {
           logger.debugOnly.error(e);
           logger.error(
-            "Error while decrypting, the given key might be wrong or the directory you are trying to decrypt might not be a valid encrypted directory"
+            "Error while decrypting, the given key might be wrong or the directory you are trying to decrypt might not be a valid encrypted directory."
           );
           await clean();
           process.exit();
         }
       } else if (itemStats.isFile()) {
-        // Creates output path
-        let newItemPath: string;
-        try {
-          newItemPath = options.output
-            ? pathProgram.resolve(options.output)
-            : resolvedItemPath.replace(".encrypted", "").concat(".decrypted");
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to resolve given output path");
+        // Checks if the item already exists
+        if (!existsSync(inputPath)) {
+          logger.error(`This item doesn't exist.\n(path: ${inputPath})`);
           process.exit();
         }
 
-        // Checks if the item already exists
-        if (!existsSync(resolvedItemPath)) {
-          logger.error(
-            `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
-          );
+        // Creates output path
+        let outputPath: string;
+        try {
+          outputPath = options.output
+            ? pathProgram.resolve(options.output)
+            : inputPath.replace(".encrypted", "").concat(".decrypted");
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error("Failed to resolve given output path.");
+          process.exit();
+        }
+        // Checks if the "decrypted" file already exists
+        if (existsSync(outputPath)) {
+          if (options.force) {
+            try {
+              await fsAsync.rm(outputPath);
+            } catch (e) {
+              logger.debugOnly.error(e);
+              logger.error("Failed to overwrite the output file.");
+              process.exit();
+            }
+          } else {
+            logger.error(
+              `The output file already exists.\n(path: ${outputPath})`
+            );
+            process.exit();
+          }
+        }
+
+        if (
+          !(await encryption.validateStream(fs.createReadStream(inputPath)))
+        ) {
+          logger.error("Wrong key, you should be ashamed.");
+          process.exit();
+        }
+
+        let fileStats;
+        try {
+          fileStats = await fsAsync.stat(inputPath);
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error("Failed to read file details.");
           process.exit();
         }
 
         logger.debugOrVerboseOnly.info(
           "- encrypting file\n"
-            .concat(`  from "${resolvedItemPath}"\n`)
-            .concat(`  to "${newItemPath}"`)
+            .concat(`  from "${inputPath}"\n`)
+            .concat(`  to "${outputPath}"`)
+        );
+
+        logger.info(
+          `The file to decrypt is ${Quantify.parseNumber(fileStats.size)}B`
         );
 
         logger.info("Decrypting...");
@@ -197,13 +271,13 @@ export default new Command("decrypt")
         try {
           timer.start();
           await encryption.decryptStream(
-            fs.createReadStream(resolvedItemPath),
-            fs.createWriteStream(newItemPath)
+            fs.createReadStream(inputPath),
+            fs.createWriteStream(outputPath)
           );
         } catch (e) {
           logger.debugOnly.error(e);
           logger.error(
-            "Error while decrypting, the given key might be wrong or the file you are trying to decrypt might not be a valid encrypted file"
+            "Error while decrypting, the given key might be wrong or the file you are trying to decrypt might not be a valid encrypted file."
           );
           process.exit();
         }
@@ -214,7 +288,7 @@ export default new Command("decrypt")
     } catch (e) {
       logger.debugOnly.error(e);
       logger.error(
-        "Unknown error occurred (rerun with --debug for debug information)"
+        "Unknown error occurred. (rerun with --verbose to get more information)"
       );
       process.exit();
     } finally {

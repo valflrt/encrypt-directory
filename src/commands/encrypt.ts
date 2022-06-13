@@ -6,6 +6,7 @@ import pathProgram from "path";
 
 import Encryption from "../encryption";
 import Tree, { ItemArray, ItemTypes } from "../tree";
+import Quantify from "../quantify";
 
 import Logger from "../logger";
 import Timer from "../timer";
@@ -17,6 +18,11 @@ export default new Command("encrypt")
   .argument("<path>", "path of the file/directory to encrypt")
   .argument("<key>", "key used to encrypt")
 
+  .option(
+    "-f, --force",
+    "force operation (overwrite the output directory if it already exists)",
+    false
+  )
   .option("-o, --output [path]", "set a custom output path")
   .option(
     "-n, --plain-names",
@@ -24,7 +30,7 @@ export default new Command("encrypt")
     false
   )
 
-  .action(async (path, key, options, cmd) => {
+  .action(async (rawInputPath, key, options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
     let logger = new Logger(globalOptions);
     let timer = new Timer();
@@ -32,21 +38,19 @@ export default new Command("encrypt")
     logger.debugOnly.debug("Given options:", globalOptions);
 
     try {
-      // Resolves the given path
-      let resolvedItemPath: string;
+      // Tries to resolve the given path
+      let inputPath: string;
       try {
-        resolvedItemPath = pathProgram.resolve(path);
+        inputPath = pathProgram.resolve(rawInputPath);
       } catch (e) {
         logger.debugOnly.error(e);
-        logger.error("Invalid path !");
+        logger.error(`Invalid input path`);
         process.exit();
       }
 
       // Checks if the item exists
-      if (!existsSync(resolvedItemPath)) {
-        logger.error(
-          `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
-        );
+      if (!existsSync(inputPath)) {
+        logger.error(`This item doesn't exist.\n(path: ${inputPath})`);
         process.exit();
       }
 
@@ -57,19 +61,15 @@ export default new Command("encrypt")
        * Check if the item is a directory, a file or
        * something else
        */
-      let itemStats = await fsAsync.stat(resolvedItemPath);
+      let itemStats = await fsAsync.stat(inputPath);
       if (itemStats.isDirectory()) {
         // Generates directory tree
         let dir;
         try {
-          dir = await new Tree(resolvedItemPath).toObject();
-          if (dir === null) {
-            logger.error("Failed to read directory !");
-            process.exit();
-          }
+          dir = await new Tree(inputPath).toObject();
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Failed to read directory !");
+          logger.error("Failed to read directory.");
           process.exit();
         }
 
@@ -77,18 +77,27 @@ export default new Command("encrypt")
         try {
           outputPath = options.output
             ? pathProgram.resolve(options.output)
-            : resolvedItemPath.concat(".encrypted");
+            : inputPath.concat(".encrypted");
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Failed to resolve given output path");
+          logger.error("Failed to resolve given output path.");
           process.exit();
         }
         // Checks if the "encrypted" directory already exists
         if (existsSync(outputPath)) {
-          logger.error(
-            `The encrypted directory already exists. Please delete it and try again.\n(path: ${outputPath})`
-          );
-          process.exit();
+          if (options.force) {
+            try {
+              await fsAsync.rm(outputPath, { force: true, recursive: true });
+            } catch (e) {
+              logger.debugOnly.error(e);
+              logger.error("Failed to overwrite the output directory.");
+            }
+          } else {
+            logger.error(
+              `The output directory already exists.\n(path: ${outputPath})`
+            );
+            process.exit();
+          }
         }
 
         // Creates base directory (typically [name of the dir to encrypt].encrypted)
@@ -96,16 +105,41 @@ export default new Command("encrypt")
           await fsAsync.mkdir(outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Failed to create base directory");
+          logger.error("Failed to create base directory.");
+          process.exit();
+        }
+
+        // A function to clean, here remove output directory
+        let clean = async () => {
+          try {
+            await fsAsync.rm(outputPath, { recursive: true, force: true });
+          } catch (e) {
+            logger.debugOnly.error(e);
+            logger.error("Failed to clean up.");
+          }
+        };
+
+        // Creates config file
+        try {
+          await fsAsync.writeFile(
+            pathProgram.join(outputPath, "_config.json"),
+            JSON.stringify({
+              test: encryption.encrypt(Buffer.alloc(0)).toString("base64"),
+              plainNames: options.plainNames,
+            })
+          );
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error("Failed to create config file.");
           process.exit();
         }
 
         // Counts number of items in the directory
-        logger.info(`Found ${Tree.getNumberOfEntries(dir)} items.`);
-
-        // A function to clean, here remove output directory
-        let clean = () =>
-          fsAsync.rm(outputPath, { recursive: true, force: true });
+        logger.info(
+          `Found ${Tree.getNumberOfEntries(
+            dir
+          )} items (totalizing ${Quantify.parseNumber(dir.size)}B).`
+        );
 
         /**
          * Recursion function to encrypt all the files in
@@ -159,35 +193,63 @@ export default new Command("encrypt")
           await loopThroughDir(dir.items, outputPath);
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Error while encrypting");
+          logger.error("Error while encrypting.");
           await clean();
           process.exit();
         }
       } else if (itemStats.isFile()) {
-        // Creates output path
-        let newItemPath: string;
-        try {
-          newItemPath = options.output
-            ? pathProgram.resolve(options.output)
-            : resolvedItemPath.concat(".encrypted");
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to resolve given output path");
+        // Checks if the item already exists
+        if (!existsSync(inputPath)) {
+          logger.error(`This item doesn't exist.\n(path: ${inputPath})`);
           process.exit();
         }
 
-        // Checks if the item already exists
-        if (!existsSync(resolvedItemPath)) {
-          logger.error(
-            `The item pointed by this path doesn't exist !\n(path: ${resolvedItemPath})`
-          );
+        // Creates output path
+        let outputPath: string;
+        try {
+          outputPath = options.output
+            ? pathProgram.resolve(options.output)
+            : inputPath.concat(".encrypted");
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error("Failed to resolve given output path.");
+          process.exit();
+        }
+        // Checks if the "encrypted" file already exists
+        if (existsSync(outputPath)) {
+          if (options.force) {
+            try {
+              await fsAsync.rm(outputPath);
+            } catch (e) {
+              logger.debugOnly.error(e);
+              logger.error("Failed to overwrite the output file.");
+              process.exit();
+            }
+          } else {
+            logger.error(
+              `The output file already exists.\n(path: ${outputPath})`
+            );
+            process.exit();
+          }
+        }
+
+        let fileStats;
+        try {
+          fileStats = await fsAsync.stat(inputPath);
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error("Failed to read file details.");
           process.exit();
         }
 
         logger.debugOrVerboseOnly.info(
           "- encrypting file\n"
-            .concat(`  from "${resolvedItemPath}"\n`)
-            .concat(`  to "${newItemPath}"`)
+            .concat(`  from "${inputPath}"\n`)
+            .concat(`  to "${outputPath}"`)
+        );
+
+        logger.info(
+          `The file to encrypt is ${Quantify.parseNumber(fileStats.size)}B`
         );
 
         logger.info("Encrypting...");
@@ -195,12 +257,12 @@ export default new Command("encrypt")
         try {
           timer.start();
           await encryption.encryptStream(
-            fs.createReadStream(resolvedItemPath),
-            fs.createWriteStream(newItemPath)
+            fs.createReadStream(inputPath),
+            fs.createWriteStream(outputPath)
           );
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Error while encrypting");
+          logger.error("Error while encrypting.");
           process.exit();
         }
       } else {
@@ -210,7 +272,7 @@ export default new Command("encrypt")
     } catch (e) {
       logger.debugOnly.error(e);
       logger.error(
-        "Unknown error occurred (rerun with --debug for debug information)"
+        "Unknown error occurred. (rerun with --verbose to get more information)"
       );
       process.exit();
     } finally {
