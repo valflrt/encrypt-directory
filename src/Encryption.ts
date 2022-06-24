@@ -244,13 +244,6 @@ export default class Encryption {
                         transform(chunk, enc, callback) {
                           if (this.local.isFirstChunk) {
                             this.local.isFirstChunk = false;
-                            if (
-                              Buffer.compare(
-                                chunk.slice(0, 4),
-                                Buffer.alloc(4)
-                              ) !== 0
-                            )
-                              return callback(new Error("Wrong key"));
                             this.push(chunk.slice(4));
                           } else this.push(chunk);
                           callback();
@@ -281,57 +274,39 @@ export default class Encryption {
     let algorithm = this.algorithm;
     let hashedKey = this._hashedKey;
 
-    return new Promise<boolean>((resolve) =>
-      input
-        .on("end", resolve)
-        .on("error", () => resolve(false))
-        .pipe(
-          new CustomTransform({
-            transform(chunk, enc, callback) {
-              try {
-                let iv = chunk.slice(0, 16);
-                let decipher = crypto.createDecipheriv(
-                  algorithm,
-                  hashedKey,
-                  iv
-                );
+    return new Promise<boolean>((resolve, reject) => {
+      input.on("error", reject).pipe(
+        new CustomTransform({
+          transform(chunk, enc, callback) {
+            if (!this.local.iv) {
+              this.local.iv = chunk.slice(0, 16);
+              let decipher = crypto.createDecipheriv(
+                algorithm,
+                hashedKey,
+                this.local.iv
+              );
 
-                this.on("error", () => resolve(false))
-                  .pipe(decipher)
-                  .on("error", () => resolve(false))
-                  .pipe(
-                    new CustomTransform({
-                      transform(chunk, enc, callback) {
-                        try {
-                          if (
-                            Buffer.compare(
-                              chunk.slice(0, 4),
-                              Buffer.alloc(4)
-                            ) !== 0
-                          )
-                            resolve(false);
-                          else resolve(true);
-                          this.end();
-                          this.destroy();
-                          callback();
-                        } catch {
-                          this.destroy();
-                          resolve(false);
-                        }
-                      },
-                    })
-                  )
-                  .on("error", () => resolve(false));
-
-                this.push(chunk.slice(16));
-                callback();
-              } catch {
-                this.destroy();
-                resolve(false);
-              }
-            },
-          })
-        )
-    );
+              this.on("error", reject)
+                .pipe(decipher)
+                .on("error", reject)
+                .pipe(
+                  new Transform({
+                    transform(chunk, enc, callback) {
+                      if (
+                        Buffer.compare(chunk.slice(0, 4), Buffer.alloc(4)) !== 0
+                      )
+                        resolve(false);
+                      else resolve(true);
+                      callback(null, chunk);
+                    },
+                  })
+                )
+                .on("error", reject);
+            }
+            callback(null, chunk.slice(16));
+          },
+        })
+      );
+    });
   }
 }
