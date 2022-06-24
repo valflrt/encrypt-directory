@@ -211,36 +211,42 @@ export default new Command("decrypt")
       logger.info("Validating files...");
 
       // checks if every file in the directory is valid
-      let allValid = (
-        await Promise.all(
-          items.map(async (i) => {
-            if (i.type === "directory") {
-              let flatArray = await new Tree(i.inputPath).toFlatArray();
-              return (
-                await Promise.all(
-                  flatArray.map((i) =>
-                    i.type === ItemTypes.Dir || i.type === ItemTypes.File
-                      ? encryption.validateStream(fs.createReadStream(i.path))
-                      : true
+      try {
+        let allValid = (
+          await Promise.all(
+            items.map(async (i) => {
+              if (i.type === "directory") {
+                let flatArray = await new Tree(i.inputPath).toFlatArray();
+                return (
+                  await Promise.all(
+                    flatArray.map((i) =>
+                      i.type === ItemTypes.Dir || i.type === ItemTypes.File
+                        ? encryption.validateStream(fs.createReadStream(i.path))
+                        : true
+                    )
                   )
-                )
-              ).every((i) => !!i);
-            } else {
-              return await encryption.validateStream(
-                fs.createReadStream(i.inputPath)
-              );
-            }
-          })
-        )
-      ).every((i) => !!i);
-      if (!allValid) {
-        logger.error(
-          "Invalid files might have been found or the given key is wrong."
-        );
-        await clean();
+                ).every((i) => !!i);
+              } else {
+                return await encryption.validateStream(
+                  fs.createReadStream(i.inputPath)
+                );
+              }
+            })
+          )
+        ).every((i) => !!i);
+        if (!allValid) {
+          logger.error(
+            "Invalid files might have been found or the given key is wrong."
+          );
+          await clean();
+          process.exit();
+        } else {
+          logger.success("All files are valid.");
+        }
+      } catch (e) {
+        logger.debugOnly.error(e);
+        logger.error("Failed to validate files, key must be wrong.");
         process.exit();
-      } else {
-        logger.success("All files are valid.");
       }
 
       // Counts number of items in the directory
