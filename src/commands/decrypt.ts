@@ -5,7 +5,7 @@ import fsAsync from "fs/promises";
 import pathProgram from "path";
 
 import Encryption from "../Encryption";
-import Tree, { ItemArray, ItemTypes } from "../Tree";
+import Tree, { Dir, ItemArray, ItemTypes } from "../Tree";
 import FileSize from "../FileSize";
 
 import Logger from "../Logger";
@@ -15,17 +15,20 @@ export default new Command("decrypt")
   .aliases(["d"])
   .description("decrypt an encrypted file/directory")
 
-  .argument("<path>", "path of the directory to decrypt")
-  .argument("<key>", "key used to decrypt")
+  .argument("<paths...>", "path(s) of the item(s) to decrypt")
+  .option("-k, --key <key>", "key used to encrypt")
 
   .option(
     "-f, --force",
-    "force operation (overwrite the output directory if it already exists)",
+    "force operation (overwrite the output item(s) if it already exists)",
     false
   )
-  .option("-o, --output [path]", "set a custom output path")
+  .option(
+    "-o, --output [path]",
+    "set a custom output path (only supported when one item to decrypt is given)"
+  )
 
-  .action(async (rawInputPath, key, options, cmd) => {
+  .action(async (rawInputPaths: string[], options, cmd) => {
     let globalOptions = cmd.optsWithGlobals();
     let logger = new Logger(globalOptions);
     let timer = new Timer();
@@ -35,233 +38,318 @@ export default new Command("decrypt")
     timer.start();
 
     try {
-      // Tries to resolve the given path
-      let inputPath: string;
-      try {
-        inputPath = pathProgram.resolve(rawInputPath);
-      } catch (e) {
-        logger.debugOnly.error(e);
-        logger.error(`Invalid input path`);
+      if (options.output && rawInputPaths.length > 1) {
+        logger.error(
+          "Output path can only be specified when encrypting one item only."
+        );
         process.exit();
       }
 
-      // Checks if the item exists
-      if (!existsSync(inputPath)) {
-        logger.error(`This item doesn't exist.\n(path: ${inputPath})`);
+      // Checks if key is given
+      if (!options.key) {
+        logger.error(
+          `You must give a key (rerun with --help for more information).`
+        );
         process.exit();
       }
 
       // Creates an Encryption instance
-      let encryption = new Encryption(key);
+      let encryption = new Encryption(options.key);
 
-      /**
-       * Check if the item is a directory, a file or
-       * something else
-       */
-      let itemStats = await fsAsync.stat(inputPath);
-      if (itemStats.isDirectory()) {
-        // Generates directory tree
-        let dir;
-        let flatDir;
-        try {
-          let tree = new Tree(inputPath);
-          dir = await tree.toObject();
-          flatDir = await tree.toFlatArray();
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to read directory.");
-          process.exit();
-        }
-
-        let outputPath: string;
-        try {
-          outputPath = options.output
-            ? pathProgram.resolve(options.output)
-            : inputPath.replace(".encrypted", "").concat(".decrypted");
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to resolve given output path.");
-          process.exit();
-        }
-        // Checks if the "decrypted" directory already exists
-        if (existsSync(outputPath)) {
-          if (options.force) {
-            try {
-              await fsAsync.rm(outputPath, { force: true, recursive: true });
-            } catch (e) {
-              logger.debugOnly.error(e);
-              logger.error("Failed to overwrite the output directory.");
-            }
-          } else {
-            logger.error(
-              `The output directory already exists.\n(path: ${outputPath})`
-            );
-            process.exit();
-          }
-        }
-
-        // Creates base directory (typically [name of the dir to decrypt].decrypted)
-        try {
-          await fsAsync.mkdir(outputPath);
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to create base directory.");
-          process.exit();
-        }
-
-        // A function to clean, here remove output directory
-        let clean = async () => {
+      let inputPaths = await Promise.all(
+        rawInputPaths.map(async (rawInputPath) => {
+          // Tries to resolve the given path
+          let resolvedPath: string;
           try {
-            await fsAsync.rm(outputPath, { recursive: true, force: true });
+            resolvedPath = pathProgram.resolve(rawInputPath);
           } catch (e) {
             logger.debugOnly.error(e);
-            logger.error("Failed to clean up.");
-          }
-        };
-
-        logger.info("Validating files...");
-
-        // checks if every file in the directory is valid
-        let allValid = (
-          await Promise.all(
-            flatDir.map((i) =>
-              encryption.validateStream(fs.createReadStream(i.path))
-            )
-          )
-        ).every((i) => !!i);
-        if (!allValid) {
-          logger.error(
-            "Invalid files might have been found or the given key is wrong."
-          );
-          await clean();
-          process.exit();
-        } else
-          logger.info(
-            `All files are valid, found ${Tree.getNumberOfFiles(
-              dir
-            )} items (totalizing ${new FileSize(dir.size)}).`
-          );
-
-        /**
-         * Recursion function to decrypt all the files in
-         * the directory
-         * @param items Items from Dir object
-         * @param parentPath Path of the parent directory
-         */
-        let loopThroughDir = (items: ItemArray, parentPath: string) =>
-          Promise.all(
-            items.map(async (i) => {
-              // Creates item path
-              let newItemPath = pathProgram.join(
-                parentPath,
-                encryption
-                  .decrypt(Buffer.from(i.name, "base64url"))
-                  .toString("utf8")
-              );
-
-              if (i.type === ItemTypes.Dir) {
-                await fsAsync.mkdir(newItemPath, { recursive: true });
-                await loopThroughDir(i.items, newItemPath);
-              } else if (i.type === ItemTypes.File) {
-                logger.debugOrVerboseOnly.info(
-                  "- decrypting file\n"
-                    .concat(`  from "${i.path}"\n`)
-                    .concat(`  to "${newItemPath}"`)
-                );
-                await encryption.decryptStream(
-                  fs.createReadStream(i.path),
-                  fs.createWriteStream(newItemPath)
-                );
-              }
-            })
-          );
-
-        logger.info("Decrypting...");
-
-        try {
-          await loopThroughDir(dir.items, outputPath);
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Error while decrypting.");
-          await clean();
-          process.exit();
-        }
-      } else if (itemStats.isFile()) {
-        // Checks if the item already exists
-        if (!existsSync(inputPath)) {
-          logger.error(`This item doesn't exist.\n(path: ${inputPath})`);
-          process.exit();
-        }
-
-        // Creates output path
-        let outputPath: string;
-        try {
-          outputPath = options.output
-            ? pathProgram.resolve(options.output)
-            : inputPath.replace(".encrypted", "").concat(".decrypted");
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to resolve given output path.");
-          process.exit();
-        }
-        // Checks if the "decrypted" file already exists
-        if (existsSync(outputPath)) {
-          if (options.force) {
-            try {
-              await fsAsync.rm(outputPath);
-            } catch (e) {
-              logger.debugOnly.error(e);
-              logger.error("Failed to overwrite the output file.");
-              process.exit();
-            }
-          } else {
-            logger.error(
-              `The output file already exists.\n(path: ${outputPath})`
-            );
+            logger.error(`Invalid input path`);
             process.exit();
           }
-        }
+          return resolvedPath;
+        })
+      );
 
-        // Validates file
-        if (
-          !(await encryption.validateStream(fs.createReadStream(inputPath)))
-        ) {
-          logger.error("Invalid file or wrong key.");
-          process.exit();
-        }
-
-        // Reads file information
-        let fileStats;
-        try {
-          fileStats = await fsAsync.stat(inputPath);
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to read file details.");
-          process.exit();
-        }
-
-        logger.debugOrVerboseOnly.info(
-          "- encrypting file\n"
-            .concat(`  from "${inputPath}"\n`)
-            .concat(`  to "${outputPath}"`)
+      // Checks if all the items exist
+      let inexistantPaths = inputPaths.filter(
+        (inputPath) => !existsSync(inputPath)
+      );
+      if (inexistantPaths.length !== 0) {
+        logger.error(
+          inexistantPaths.length === 1
+            ? `This item named ${pathProgram.basename(
+                inexistantPaths[0]
+              )} doesn't exist.\n(full path: ${inexistantPaths[0]})`
+            : `These items don't exist:\n`.concat(
+                inexistantPaths
+                  .map(
+                    (p) => `  - ${pathProgram.basename(p)} (full path: ${p})`
+                  )
+                  .join("\n")
+              )
         );
+        process.exit();
+      }
 
-        logger.info(`The file to decrypt is ${new FileSize(fileStats.size)}`);
+      // Loops through given items without encrypting, just getting information about them
+      let items = await Promise.all(
+        inputPaths.map(
+          async (
+            inputPath
+          ): Promise<{
+            type: "directory" | "file" | "unknown";
+            inputPath: string;
+            outputPath: string;
+            dir: Dir | null;
+          }> => {
+            // Reads current path stats
+            let pathStats = await fsAsync.stat(inputPath);
 
-        logger.info("Decrypting...");
+            // Creates output path
+            let outputPath: string;
+            try {
+              outputPath =
+                options.output && rawInputPaths.length <= 1
+                  ? pathProgram.resolve(options.output)
+                  : inputPath.replace(".encrypted", "").concat(".decrypted");
+            } catch (e) {
+              logger.debugOnly.error(e);
+              logger.error("Failed to resolve given output path.");
+              process.exit();
+            }
+            // Checks if the "encrypted" item already exists
+            if (existsSync(outputPath)) {
+              if (options.force) {
+                try {
+                  await fsAsync.rm(outputPath, {
+                    force: true,
+                    recursive: true,
+                  });
+                } catch (e) {
+                  logger.debugOnly.error(e);
+                  logger.error(
+                    `Failed to overwrite the output ${
+                      pathStats.isFile()
+                        ? "file"
+                        : pathStats.isDirectory()
+                        ? "directory"
+                        : "item"
+                    }.\n(path: ${outputPath})`
+                  );
+                }
+              } else {
+                logger.error(
+                  `The output ${
+                    pathStats.isFile()
+                      ? "file"
+                      : pathStats.isDirectory()
+                      ? "directory"
+                      : "item"
+                  } already exists.\n(path: ${outputPath})`
+                );
+                process.exit();
+              }
+            }
 
+            if (pathStats.isDirectory()) {
+              // makes directory tree
+              let tree;
+              try {
+                tree = await new Tree(inputPath).toObject();
+              } catch (e) {
+                logger.debugOnly.error(e);
+                logger.error("Failed to read directory.");
+                process.exit();
+              }
+              return {
+                type: "directory",
+                inputPath,
+                outputPath,
+                dir: tree,
+              };
+            } else if (pathStats.isFile()) {
+              // Checks if the file exists
+              if (!existsSync(inputPath)) {
+                logger.error(`This file doesn't exist.\n(path: ${inputPath})`);
+                process.exit();
+              }
+
+              return {
+                type: "file",
+                inputPath,
+                outputPath,
+                dir: null,
+              };
+            } else {
+              logger.warn(
+                "An item that is neither a file nor directory found, skipping...\n".concat(
+                  `(path: ${inputPath})`
+                )
+              );
+              return {
+                type: "unknown",
+                inputPath,
+                outputPath,
+                dir: null,
+              };
+            }
+          }
+        )
+      );
+
+      // A function to clean, here remove output directory
+      let clean = async () => {
         try {
-          await encryption.decryptStream(
-            fs.createReadStream(inputPath),
-            fs.createWriteStream(outputPath)
+          await Promise.all(
+            items.map(async (item) => {
+              await fsAsync.rm(item.outputPath, {
+                recursive: true,
+                force: true,
+              });
+            })
           );
         } catch (e) {
           logger.debugOnly.error(e);
-          logger.error("Error while decrypting.");
-          process.exit();
+          logger.error("Failed to clean up.");
         }
+      };
+
+      logger.info("Validating files...");
+
+      // checks if every file in the directory is valid
+      let allValid = (
+        await Promise.all(
+          items.map(async (i) => {
+            if (i.type === "directory") {
+              let flatArray = await new Tree(i.inputPath).toFlatArray();
+              return (
+                await Promise.all(
+                  flatArray.map((i) =>
+                    i.type === ItemTypes.Dir || i.type === ItemTypes.File
+                      ? encryption.validateStream(fs.createReadStream(i.path))
+                      : true
+                  )
+                )
+              ).every((i) => !!i);
+            } else {
+              return await encryption.validateStream(
+                fs.createReadStream(i.inputPath)
+              );
+            }
+          })
+        )
+      ).every((i) => !!i);
+      if (!allValid) {
+        logger.error(
+          "Invalid files might have been found or the given key is wrong."
+        );
+        await clean();
+        process.exit();
       } else {
-        logger.error("This program only supports files and directories");
+        logger.success("All files are valid.");
+      }
+
+      // Counts number of items in the directory
+      logger.info(
+        `Found ${items.reduce(
+          (acc, i) =>
+            i.type === "directory"
+              ? acc + Tree.getNumberOfFiles(i.dir!)
+              : i.type === "file"
+              ? acc + 1
+              : acc,
+          0
+        )} items (totalizing ${new FileSize(
+          (
+            await Promise.all(
+              items.map(async (i) =>
+                i.type === "file"
+                  ? (
+                      await fsAsync.stat(i.inputPath)
+                    ).size
+                  : i.type === "directory"
+                  ? i.dir!.size
+                  : 0
+              )
+            )
+          ).reduce((acc, i) => acc + i, 0)
+        )}).`
+      );
+
+      logger.info("Decrypting...");
+
+      // Encrypts all items
+      try {
+        await Promise.all(
+          items.map(async (item) => {
+            /**
+             * Check if the item is a directory, a file or
+             * something else
+             */
+            if (item.type === "directory") {
+              // Creates base directory (typically [name of the dir to encrypt].encrypted)
+              try {
+                await fsAsync.mkdir(item.outputPath);
+              } catch (e) {
+                logger.debugOnly.error(e);
+                logger.error("Failed to create base directory.");
+                process.exit();
+              }
+
+              /**
+               * Recursion function to decrypt all the files in
+               * the directory
+               * @param items Items from Dir object
+               * @param parentPath Path of the parent directory
+               */
+              let loopThroughDir = (items: ItemArray, parentPath: string) =>
+                Promise.all(
+                  items.map(async (i) => {
+                    // Creates item path
+                    let newItemPath = pathProgram.join(
+                      parentPath,
+                      encryption
+                        .decrypt(Buffer.from(i.name, "base64url"))
+                        .toString("utf8")
+                    );
+
+                    if (i.type === ItemTypes.Dir) {
+                      await fsAsync.mkdir(newItemPath, { recursive: true });
+                      await loopThroughDir(i.items, newItemPath);
+                    } else if (i.type === ItemTypes.File) {
+                      logger.debugOrVerboseOnly.info(
+                        "- decrypting file\n"
+                          .concat(`  from "${i.path}"\n`)
+                          .concat(`  to "${newItemPath}"`)
+                      );
+                      await encryption.decryptStream(
+                        fs.createReadStream(i.path),
+                        fs.createWriteStream(newItemPath)
+                      );
+                    }
+                  })
+                );
+
+              await loopThroughDir(item.dir!.items, item.outputPath);
+            } else if (item.type === "file") {
+              logger.debugOrVerboseOnly.info(
+                "- decrypting file\n"
+                  .concat(`  from "${item.inputPath}"\n`)
+                  .concat(`  to "${item.outputPath}"`)
+              );
+
+              await encryption.decryptStream(
+                fs.createReadStream(item.inputPath),
+                fs.createWriteStream(item.outputPath)
+              );
+            } else return;
+          })
+        );
+      } catch {
+        logger.error("Error while encrypting.");
+        await clean();
+
         process.exit();
       }
     } catch (e) {
