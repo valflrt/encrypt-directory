@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import {
   Readable,
+  Stream,
   Transform,
   TransformCallback,
   TransformOptions,
@@ -133,67 +134,93 @@ export default class Encryption {
   /**
    * Encrypts a Stream
    * @param input Plain input (Readable stream) to encrypt
-   * @param output Output (Writable stream) to pipe the
-   * decrypted data in
+   * @param streamChain A stream chain: several streams that
+   * are piped into each other in the order they were given.
+   * The encrypted data will be piped in the first one.
    */
-  public encryptStream(input: Readable, output: Writable) {
+  public encryptStream<T extends (Writable | Transform)[]>(
+    input: Readable,
+    ...streamChain: T
+  ) {
     let iv = crypto.randomBytes(16);
     let cipher = crypto.createCipheriv(this.algorithm, this._hashedKey, iv);
 
-    return new Promise<void>((resolve, reject) =>
-      input
-        .on("end", resolve)
-        .on("error", reject)
-        .pipe(
-          new CustomTransform({
-            transform(chunk, enc, callback) {
-              if (this.local.isFirstChunk) {
-                this.local.isFirstChunk = false;
-                this.push(Buffer.concat([Buffer.alloc(4), chunk]));
-              } else this.push(chunk);
-              callback();
-            },
-            local: {
-              isFirstChunk: true,
-            },
-          })
-        )
-        .on("error", reject)
-        .pipe(cipher)
-        .on("error", reject)
-        .pipe(
-          new CustomTransform({
-            transform(chunk, enc, callback) {
-              chunk = Buffer.from(chunk);
-              if (this.local.isFirstChunk) {
-                this.local.isFirstChunk = false;
-                this.push(Buffer.concat([iv, chunk]));
-              } else this.push(chunk);
-              callback();
-            },
-            local: {
-              isFirstChunk: true,
-            },
-          })
-        )
-        .on("error", reject)
-        .pipe(output)
-        .on("error", reject)
-    );
+    return new Promise<void>((resolve, reject) => {
+      let chainPipeStreams = (stream: Stream, index: number = 0): Stream => {
+        if (!streamChain[index]) return stream;
+        else
+          return chainPipeStreams(
+            stream.pipe(streamChain[index]).on("error", reject),
+            index + 1
+          );
+      };
+
+      chainPipeStreams(
+        input
+          .on("end", resolve)
+          .on("error", reject)
+          .pipe(
+            new CustomTransform({
+              transform(chunk, enc, callback) {
+                if (this.local.isFirstChunk) {
+                  this.local.isFirstChunk = false;
+                  this.push(Buffer.concat([Buffer.alloc(4), chunk]));
+                } else this.push(chunk);
+                callback();
+              },
+              local: {
+                isFirstChunk: true,
+              },
+            })
+          )
+          .on("error", reject)
+          .pipe(cipher)
+          .on("error", reject)
+          .pipe(
+            new CustomTransform({
+              transform(chunk, enc, callback) {
+                chunk = Buffer.from(chunk);
+                if (this.local.isFirstChunk) {
+                  this.local.isFirstChunk = false;
+                  this.push(Buffer.concat([iv, chunk]));
+                } else this.push(chunk);
+                callback();
+              },
+              local: {
+                isFirstChunk: true,
+              },
+            })
+          )
+          .on("error", reject)
+      );
+    });
   }
 
   /**
    * Decrypts a Stream
    * @param input Encrypted input (Readable stream) to
    * decrypt
-   * @param output Output (Writable stream) to pipe the
-   * decrypted data in
+   * @param streamChain A stream chain: several streams that
+   * are piped into each other in the order they were given.
+   * The decrypted data will be piped in the first one.
    */
-  public decryptStream(input: Readable, output: Writable) {
+  public decryptStream<T extends (Writable | Transform)[]>(
+    input: Readable,
+    ...streamChain: T
+  ) {
     let algorithm = this.algorithm;
     let hashedKey = this._hashedKey;
 
-    return new Promise<void>((resolve, reject) =>
+    return new Promise<void>((resolve, reject) => {
+      let chainPipeStreams = (stream: Stream, index: number = 0): Stream => {
+        if (!streamChain[index]) return stream;
+        else
+          return chainPipeStreams(
+            stream.pipe(streamChain[index]).on("error", reject),
+            index + 1
+          );
+      };
+
       input
         .on("end", resolve)
         .on("error", reject)
@@ -208,41 +235,41 @@ export default class Encryption {
                   this.local.iv
                 );
 
-                this.on("error", reject)
-                  .pipe(decipher)
-                  .on("error", reject)
-                  .pipe(
-                    new CustomTransform({
-                      transform(chunk, enc, callback) {
-                        if (this.local.isFirstChunk) {
-                          this.local.isFirstChunk = false;
-                          if (
-                            Buffer.compare(
-                              chunk.slice(0, 4),
-                              Buffer.alloc(4)
-                            ) !== 0
-                          )
-                            return callback(new Error("Wrong key"));
-                          this.push(chunk.slice(4));
-                        } else this.push(chunk);
-                        callback();
-                      },
-                      local: {
-                        isFirstChunk: true,
-                      },
-                    })
-                  )
-                  .on("error", reject)
-                  .pipe(output)
-                  .on("error", reject);
+                chainPipeStreams(
+                  this.on("error", reject)
+                    .pipe(decipher)
+                    .on("error", reject)
+                    .pipe(
+                      new CustomTransform({
+                        transform(chunk, enc, callback) {
+                          if (this.local.isFirstChunk) {
+                            this.local.isFirstChunk = false;
+                            if (
+                              Buffer.compare(
+                                chunk.slice(0, 4),
+                                Buffer.alloc(4)
+                              ) !== 0
+                            )
+                              return callback(new Error("Wrong key"));
+                            this.push(chunk.slice(4));
+                          } else this.push(chunk);
+                          callback();
+                        },
+                        local: {
+                          isFirstChunk: true,
+                        },
+                      })
+                    )
+                    .on("error", reject)
+                );
 
                 this.push(chunk.slice(16));
               } else this.push(chunk);
               callback();
             },
           })
-        )
-    );
+        );
+    });
   }
 
   /**
