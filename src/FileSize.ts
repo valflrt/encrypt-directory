@@ -38,7 +38,7 @@ export default class FileSize extends String {
         ? rounders.million(number).toString().concat("MB")
         : number >= 1e3
         ? rounders.thousand(number).toString().concat("KB")
-        : number.toFixed(1).toString()
+        : number.toFixed(1).toString().concat("B")
     );
   }
 }
