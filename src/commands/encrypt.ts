@@ -2,6 +2,7 @@ import { Command } from "commander";
 
 import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
+import zlib from "zlib";
 import pathProgram from "path";
 
 import Encryption from "../Encryption";
@@ -316,16 +317,16 @@ export default new Command("encrypt")
             } else return;
           })
         );
-      } catch {
+      } catch (e) {
+        logger.debugOnly.error(e);
         logger.error("Error while encrypting.");
         await clean();
-
         process.exit();
       }
     } catch (e) {
       logger.debugOnly.error(e);
       logger.error(
-        "Unknown error occurred. (rerun with --verbose to get more information)"
+        "Unknown error occurred. (rerun with --verbose or --debug to get more information)"
       );
       process.exit();
     } finally {
