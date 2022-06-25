@@ -113,10 +113,10 @@ export class LogMethods {
   }
 }
 
-export interface GivenCLIOptions {
-  verbose?: boolean;
-  debug?: boolean;
-}
+export type GivenCLIOptions = Partial<{
+  verbose: boolean;
+  debug: boolean;
+}>;
 
 export default class Logger extends LogMethods {
   private _CLIOptions: GivenCLIOptions;
