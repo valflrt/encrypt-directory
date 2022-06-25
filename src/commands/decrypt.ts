@@ -49,20 +49,18 @@ export default new Command("decrypt")
       // Creates an Encryption instance
       let encryption = new Encryption(options.key);
 
-      let inputPaths = await Promise.all(
-        rawInputPaths.map(async (rawInputPath) => {
-          // Tries to resolve the given path
-          let resolvedPath: string;
-          try {
-            resolvedPath = pathProgram.resolve(rawInputPath);
-          } catch (e) {
-            logger.debugOnly.error(e);
-            logger.error(`Invalid input path`);
-            process.exit();
-          }
-          return resolvedPath;
-        })
-      );
+      // Tries to resolve the given raw paths
+      let inputPaths = rawInputPaths.map((rawInputPath) => {
+        let resolvedPath: string;
+        try {
+          resolvedPath = pathProgram.resolve(rawInputPath);
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error(`Invalid input path`);
+          process.exit();
+        }
+        return resolvedPath;
+      });
 
       // Checks if all the items exist
       let inexistantPaths = inputPaths.filter(
@@ -176,7 +174,7 @@ export default new Command("decrypt")
               };
             } else {
               logger.warn(
-                "An item that is neither a file nor directory found, skipping...\n".concat(
+                "An item that is neither a file nor directory was found, skipping...\n".concat(
                   `(path: ${inputPath})`
                 )
               );
@@ -191,7 +189,10 @@ export default new Command("decrypt")
         )
       );
 
-      // A function to clean, here remove output directory
+      /**
+       * A function to clean, to remove files/directories
+       * that were created in case of error when decrypting
+       */
       let clean = async () => {
         try {
           await Promise.all(
@@ -210,7 +211,7 @@ export default new Command("decrypt")
 
       logger.info("Validating files...");
 
-      // checks if every file in the directory is valid
+      // checks if every item is valid
       try {
         let allValid = (
           await Promise.all(
@@ -249,7 +250,7 @@ export default new Command("decrypt")
         process.exit();
       }
 
-      // Counts number of items in the directory
+      // Counts the total number of items
       logger.info(
         `Found ${items.reduce(
           (acc, i) =>
@@ -278,7 +279,7 @@ export default new Command("decrypt")
 
       logger.info("Decrypting...");
 
-      // Encrypts all items
+      // Encrypts every item
       try {
         await Promise.all(
           items.map(async (item) => {

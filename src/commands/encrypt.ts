@@ -2,7 +2,6 @@ import { Command } from "commander";
 
 import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
-import zlib from "zlib";
 import pathProgram from "path";
 
 import Encryption from "../Encryption";
@@ -12,7 +11,7 @@ import FileSize from "../FileSize";
 import Logger from "../Logger";
 import Timer from "../Timer";
 
-import { randomKey } from "../msic";
+import { randomKey } from "../misc";
 
 export default new Command("encrypt")
   .aliases(["e"])
@@ -62,20 +61,18 @@ export default new Command("encrypt")
       // Creates an Encryption instance
       let encryption = new Encryption(options.key);
 
-      let inputPaths = await Promise.all(
-        rawInputPaths.map(async (rawInputPath) => {
-          // Tries to resolve the given path
-          let resolvedPath: string;
-          try {
-            resolvedPath = pathProgram.resolve(rawInputPath);
-          } catch (e) {
-            logger.debugOnly.error(e);
-            logger.error(`Invalid input path`);
-            process.exit();
-          }
-          return resolvedPath;
-        })
-      );
+      // Tries to resolve the given raw paths
+      let inputPaths = rawInputPaths.map((rawInputPath) => {
+        let resolvedPath: string;
+        try {
+          resolvedPath = pathProgram.resolve(rawInputPath);
+        } catch (e) {
+          logger.debugOnly.error(e);
+          logger.error(`Invalid input path`);
+          process.exit();
+        }
+        return resolvedPath;
+      });
 
       // Checks if all the items exist
       let inexistantPaths = inputPaths.filter(
@@ -189,7 +186,7 @@ export default new Command("encrypt")
               };
             } else {
               logger.warn(
-                "An item that is neither a file nor directory found, skipping...\n".concat(
+                "An item that is neither a file nor directory was found, skipping...\n".concat(
                   `(path: ${inputPath})`
                 )
               );
@@ -204,7 +201,10 @@ export default new Command("encrypt")
         )
       );
 
-      // A function to clean, here remove output directory
+      /**
+       * A function to clean, to remove files/directories
+       * that were created in case of error when encrypting
+       */
       let clean = async () => {
         try {
           await Promise.all(
@@ -221,7 +221,7 @@ export default new Command("encrypt")
         }
       };
 
-      // Counts number of items in the directory
+      // Counts the total number of items
       logger.info(
         `Found ${items.reduce(
           (acc, i) =>
@@ -250,7 +250,7 @@ export default new Command("encrypt")
 
       logger.info("Encrypting...");
 
-      // Encrypts all items
+      // Encrypts every item
       try {
         await Promise.all(
           items.map(async (item) => {
