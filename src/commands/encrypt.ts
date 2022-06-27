@@ -4,10 +4,12 @@ import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
 import throat from "throat";
+import crypto from "crypto";
 
 import Encryption from "../Encryption";
-import Tree, { Dir, ItemArray, ItemTypes } from "../Tree";
+import Tree from "../Tree";
 import FileSize from "../FileSize";
+import FileMap from "../FileMap";
 
 import Logger from "../Logger";
 import Timer from "../Timer";
@@ -44,6 +46,8 @@ export default new Command("encrypt")
     timer.start();
 
     try {
+      logger.info("Started.");
+
       if (options.output && rawInputPaths.length > 1) {
         logger.error(
           "Output path can only be specified when encrypting one item only."
@@ -62,7 +66,7 @@ export default new Command("encrypt")
       // Creates an Encryption instance
       let encryption = new Encryption(options.key);
 
-      // Tries to resolve the given raw paths
+      // Resolves the given raw paths
       let inputPaths = rawInputPaths.map((rawInputPath) => {
         let resolvedPath: string;
         try {
@@ -96,8 +100,8 @@ export default new Command("encrypt")
         process.exit();
       }
 
-      // Loops through given items without encrypting, just getting information about them
-      let items = await Promise.all(
+      // Loops through given paths and gets information about them
+      let inputItems = await Promise.all(
         inputPaths.map(
           async (
             inputPath
@@ -105,10 +109,24 @@ export default new Command("encrypt")
             type: "directory" | "file" | "unknown";
             inputPath: string;
             outputPath: string;
-            dir: Dir | null;
+            tree?: Tree;
           }> => {
             // Reads current path stats
             let pathStats = await fsAsync.stat(inputPath);
+
+            let humanReadableItemType = pathStats.isFile()
+              ? "file"
+              : pathStats.isDirectory()
+              ? "directory"
+              : "item";
+
+            // Checks if the item exists
+            if (!existsSync(inputPath)) {
+              logger.error(
+                `This ${humanReadableItemType} doesn't exist.\n(path: ${inputPath})`
+              );
+              process.exit();
+            }
 
             // Creates output path
             let outputPath: string;
@@ -133,13 +151,7 @@ export default new Command("encrypt")
                 } catch (e) {
                   logger.debugOnly.error(e);
                   logger.error(
-                    `Failed to overwrite the output ${
-                      pathStats.isFile()
-                        ? "file"
-                        : pathStats.isDirectory()
-                        ? "directory"
-                        : "item"
-                    }.\n(path: ${outputPath})`
+                    `Failed to overwrite the output ${humanReadableItemType}.\n(path: ${outputPath})`
                   );
                 }
               } else {
@@ -157,32 +169,17 @@ export default new Command("encrypt")
             }
 
             if (pathStats.isDirectory()) {
-              // makes directory tree
-              let tree;
-              try {
-                tree = await new Tree(inputPath).toObject();
-              } catch (e) {
-                logger.debugOnly.error(e);
-                logger.error("Failed to read directory.");
-                process.exit();
-              }
               return {
                 type: "directory",
                 inputPath,
                 outputPath,
-                dir: tree,
+                tree: new Tree(inputPath),
               };
             } else if (pathStats.isFile()) {
-              // Checks if the file exists
-              if (!existsSync(inputPath)) {
-                logger.error(`This file doesn't exist.\n(path: ${inputPath})`);
-                process.exit();
-              }
               return {
                 type: "file",
                 inputPath,
                 outputPath,
-                dir: null,
               };
             } else {
               logger.warn(
@@ -194,7 +191,6 @@ export default new Command("encrypt")
                 type: "unknown",
                 inputPath,
                 outputPath,
-                dir: null,
               };
             }
           }
@@ -208,9 +204,9 @@ export default new Command("encrypt")
       let clean = async () => {
         try {
           await Promise.all(
-            items.map(
-              throat(10, async (item) => {
-                await fsAsync.rm(item.outputPath, {
+            inputItems.map(
+              throat(10, async (i) => {
+                await fsAsync.rm(i.outputPath, {
                   recursive: true,
                   force: true,
                 });
@@ -225,25 +221,31 @@ export default new Command("encrypt")
 
       // Counts the total number of items
       logger.info(
-        `Found ${items.reduce(
-          (acc, i) =>
-            i.type === "directory"
-              ? acc + Tree.getNumberOfFiles(i.dir!)
-              : i.type === "file"
-              ? acc + 1
-              : acc,
-          0
-        )} items (totalizing ${new FileSize(
+        `Found ${(
+          await Promise.all(
+            inputItems.map(
+              throat(50, async (i) =>
+                i.type === "directory"
+                  ? await i.tree!.fileCount
+                  : i.type === "file"
+                  ? 1
+                  : 0
+              )
+            )
+          )
+        ).reduce((acc, i) => acc + i, 0)} items (totalizing ${new FileSize(
           (
             await Promise.all(
-              items.map(async (i) =>
-                i.type === "file"
-                  ? (
-                      await fsAsync.stat(i.inputPath)
-                    ).size
-                  : i.type === "directory"
-                  ? i.dir!.size
-                  : 0
+              inputItems.map(
+                throat(50, async (i) =>
+                  i.type === "file"
+                    ? (
+                        await fsAsync.stat(i.inputPath)
+                      ).size
+                    : i.type === "directory"
+                    ? await i.tree!.size
+                    : 0
+                )
               )
             )
           ).reduce((acc, i) => acc + i, 0)
@@ -252,63 +254,89 @@ export default new Command("encrypt")
 
       logger.info("Encrypting...");
 
-      // Encrypts every item
+      // Encrypts every given path
       try {
         await Promise.all(
-          items.map(
-            throat(10, async (item) => {
+          inputItems.map(async (inputItem) => {
+            /**
+             * Check if the item is a directory, a file or
+             * something else
+             */
+            if (inputItem.type === "directory") {
+              // Creates base directory (typically [name of the dir to encrypt].encrypted)
+              try {
+                await fsAsync.mkdir(inputItem.outputPath);
+              } catch (e) {
+                logger.debugOnly.error(e);
+                logger.error("Failed to create base directory.");
+                process.exit();
+              }
+
+              // Function used to generate a random file name
+              let randomName = () =>
+                crypto
+                  .randomBytes(Math.round(Math.random() * 24 + 8))
+                  .toString("base64url");
+
+              // Creates the file map
+              let fileMap = new FileMap();
+
+              // Creates the iterator (to iterate through the tree)
+              let iterator = inputItem.tree!.createIterator();
+
               /**
-               * Check if the item is a directory, a file or
-               * something else
+               * Recursion function to encrypt all the files
+               * in the directory
                */
-              if (item.type === "directory") {
-                // Creates base directory (typically [name of the dir to encrypt].encrypted)
-                try {
-                  await fsAsync.mkdir(item.outputPath);
-                } catch (e) {
-                  logger.debugOnly.error(e);
-                  logger.error("Failed to create base directory.");
-                  process.exit();
-                }
+              let loopThroughDir = async () => {
+                if (iterator.isEnd()) return;
 
-                /**
-                 * Recursion function to encrypt all the files in
-                 * the directory
-                 * @param items Items from Dir object
-                 * @param parentPath Path of the parent directory
-                 */
-                let loopThroughDir = (items: ItemArray, parentPath: string) =>
-                  Promise.all(
-                    items.map(async (i) => {
-                      // Creates item path
-                      let newItemPath = pathProgram.join(
-                        parentPath,
-                        encryption
-                          .encrypt(Buffer.from(i.name))
-                          .toString("base64url")
-                      );
-
-                      if (i.type === ItemTypes.Dir) {
-                        await fsAsync.mkdir(newItemPath, { recursive: true });
-                        await loopThroughDir(i.items, newItemPath);
-                      } else if (i.type === ItemTypes.File) {
-                        await encryption.encryptStream(
-                          fs.createReadStream(i.path),
-                          fs.createWriteStream(newItemPath)
-                        );
-                      }
-                    })
+                let item = await iterator.next();
+                if (item.type === "file") {
+                  let newFileName = randomName();
+                  fileMap.addItem(
+                    pathProgram.relative(inputItem.inputPath, item.path),
+                    newFileName
                   );
+                  await encryption.encryptStream(
+                    fs.createReadStream(item.path),
+                    fs.createWriteStream(
+                      pathProgram.join(inputItem.outputPath, newFileName)
+                    )
+                  );
+                }
+                await loopThroughDir();
+              };
 
-                await loopThroughDir(item.dir!.items, item.outputPath);
-              } else if (item.type === "file") {
-                await encryption.encryptStream(
-                  fs.createReadStream(item.inputPath),
-                  fs.createWriteStream(item.outputPath)
-                );
-              } else return;
-            })
-          )
+              // Loops through directory
+              await loopThroughDir();
+
+              /**
+               * Writes file map in the encrypted directory,
+               * its name is encrypted so it can't be recognized
+               * among the other encrypted files
+               */
+              let mapFileName = encryption
+                .encrypt(Buffer.from("fileMap", "utf8"))
+                .toString("base64url");
+              fileMap.addItem(
+                pathProgram.relative(
+                  inputItem.inputPath,
+                  pathProgram.join(inputItem.inputPath, "fileMap")
+                ),
+                mapFileName
+              );
+              fsAsync.writeFile(
+                pathProgram.join(inputItem.outputPath, mapFileName),
+                encryption.encrypt(Buffer.from(JSON.stringify(fileMap.items)))
+              );
+            } else if (inputItem.type === "file") {
+              await encryption.encryptStream(
+                fs.createReadStream(inputItem.inputPath),
+                fs.createWriteStream(inputItem.outputPath)
+              );
+            } else return;
+          })
         );
       } catch (e) {
         logger.debugOnly.error(e);
