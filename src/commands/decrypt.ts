@@ -7,11 +7,10 @@ import throat from "throat";
 
 import Encryption from "../Encryption";
 import Tree from "../Tree";
-import FileSize from "../FileSize";
+import FileMap from "../FileMap";
 
 import Logger from "../Logger";
 import Timer from "../Timer";
-import FileMap, { FileMapItem } from "../FileMap";
 
 export default new Command("decrypt")
   .aliases(["d"])
@@ -213,18 +212,13 @@ export default new Command("decrypt")
           await Promise.all(
             inputItems.map(async (i) => {
               if (i.type === "directory") {
-                let iterator = i.tree!.createIterator();
-
-                let recurse = async (isValid = true): Promise<boolean> => {
-                  if (iterator.isEnd() || !isValid) return isValid;
-                  return await recurse(
-                    await encryption.validateStream(
-                      fs.createReadStream((await iterator.next()).path)
+                return (
+                  await Promise.all(
+                    await i.tree!.map((i) =>
+                      encryption.validateStream(fs.createReadStream(i.path))
                     )
-                  );
-                };
-
-                return await recurse();
+                  )
+                ).every((i) => !!i);
               } else {
                 return await encryption.validateStream(
                   fs.createReadStream(i.inputPath)
@@ -248,84 +242,49 @@ export default new Command("decrypt")
         process.exit();
       }
 
-      // Counts the total number of items
-      logger.info(
-        `Found ${(
-          await Promise.all(
-            inputItems.map(
-              throat(50, async (i) =>
-                i.type === "directory"
-                  ? await i.tree!.fileCount
-                  : i.type === "file"
-                  ? 1
-                  : 0
-              )
-            )
-          )
-        ).reduce((acc, i) => acc + i, 0)} items (totalizing ${new FileSize(
-          (
-            await Promise.all(
-              inputItems.map(
-                throat(50, async (i) =>
-                  i.type === "file"
-                    ? (
-                        await fsAsync.stat(i.inputPath)
-                      ).size
-                    : i.type === "directory"
-                    ? await i.tree!.size
-                    : 0
-                )
-              )
-            )
-          ).reduce((acc, i) => acc + i, 0)
-        )}).`
-      );
-
       logger.info("Decrypting...");
 
       // Encrypts every given path
       try {
         await Promise.all(
-          inputItems.map(async (i) => {
+          inputItems.map(async (inputItem) => {
             /**
              * Check if the item is a directory, a file or
              * something else
              */
-            if (i.type === "directory") {
+            if (inputItem.type === "directory") {
               // Creates base directory (typically [name of the dir to encrypt].encrypted)
               try {
-                await fsAsync.mkdir(i.outputPath);
+                await fsAsync.mkdir(inputItem.outputPath);
               } catch (e) {
                 logger.debugOnly.error(e);
                 logger.error("Failed to create base directory.");
                 process.exit();
               }
 
-              let iterator = i.tree!.createIterator();
-
-              // Uses map file to decrypt the encrypted items
-              let findFileMap = async (): Promise<FileMapItem[] | null> => {
-                if (iterator.isEnd()) return null;
-                let item = await iterator.next();
-                let bufferedName = Buffer.from(item.name, "base64url");
-                if (
-                  encryption.validate(bufferedName) &&
-                  encryption.decrypt(bufferedName).toString("utf8") ===
-                    "fileMap"
-                ) {
-                  let parsed = FileMap.parse(
-                    encryption
-                      .decrypt(await fsAsync.readFile(item.path))
-                      .toString("utf8")
-                  )?.items;
-                  if (!parsed) return await findFileMap();
-                  else return parsed;
-                }
-                return await findFileMap();
-              };
-
               // Finds file map
-              let fileMap = await findFileMap();
+              let fileMap = (
+                await Promise.all(
+                  await inputItem.tree!.map(
+                    throat(20, async (item) => {
+                      let bufferedName = Buffer.from(item.name, "base64url");
+                      if (
+                        encryption.validate(bufferedName) &&
+                        encryption.decrypt(bufferedName).toString("utf8") ===
+                          "fileMap"
+                      ) {
+                        let parsed = FileMap.parse(
+                          encryption
+                            .decrypt(await fsAsync.readFile(item.path))
+                            .toString("utf8")
+                        )?.items;
+                        if (!parsed) return null;
+                        else return parsed;
+                      } else return null;
+                    })
+                  )
+                )
+              ).find((i) => !!i);
               if (!fileMap) {
                 logger.error(
                   "Couldn't decrypt because file map can't be found"
@@ -333,10 +292,14 @@ export default new Command("decrypt")
                 process.exit();
               }
 
+              /**
+               * Reads file map and decrypt items depending
+               * on it
+               */
               await Promise.all(
                 fileMap.map(
-                  throat(10, async ([plain, randomized]) => {
-                    let newPath = pathProgram.join(i.outputPath, plain);
+                  throat(20, async ([plain, randomized]) => {
+                    let newPath = pathProgram.join(inputItem.outputPath, plain);
                     await fsAsync.mkdir(
                       pathProgram.resolve(pathProgram.dirname(newPath)),
                       {
@@ -345,17 +308,22 @@ export default new Command("decrypt")
                     );
                     await encryption.decryptStream(
                       fs.createReadStream(
-                        pathProgram.join(i.inputPath, randomized)
+                        pathProgram.join(inputItem.inputPath, randomized)
                       ),
                       fs.createWriteStream(newPath)
                     );
                   })
                 )
               );
-            } else if (i.type === "file") {
+
+              // Removes file map
+              await fsAsync.rm(
+                pathProgram.join(inputItem.outputPath, "fileMap")
+              );
+            } else if (inputItem.type === "file") {
               await encryption.decryptStream(
-                fs.createReadStream(i.inputPath),
-                fs.createWriteStream(i.outputPath)
+                fs.createReadStream(inputItem.inputPath),
+                fs.createWriteStream(inputItem.outputPath)
               );
             } else return;
           })

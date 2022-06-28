@@ -4,7 +4,6 @@ import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
 import throat from "throat";
-import crypto from "crypto";
 
 import Encryption from "../Encryption";
 import Tree from "../Tree";
@@ -223,29 +222,25 @@ export default new Command("encrypt")
       logger.info(
         `Found ${(
           await Promise.all(
-            inputItems.map(
-              throat(50, async (i) =>
-                i.type === "directory"
-                  ? await i.tree!.fileCount
-                  : i.type === "file"
-                  ? 1
-                  : 0
-              )
+            inputItems.map(async (i) =>
+              i.type === "directory"
+                ? await i.tree!.fileCount
+                : i.type === "file"
+                ? 1
+                : 0
             )
           )
         ).reduce((acc, i) => acc + i, 0)} items (totalizing ${new FileSize(
           (
             await Promise.all(
-              inputItems.map(
-                throat(50, async (i) =>
-                  i.type === "file"
-                    ? (
-                        await fsAsync.stat(i.inputPath)
-                      ).size
-                    : i.type === "directory"
-                    ? await i.tree!.size
-                    : 0
-                )
+              inputItems.map(async (i) =>
+                i.type === "file"
+                  ? (
+                      await fsAsync.stat(i.inputPath)
+                    ).size
+                  : i.type === "directory"
+                  ? await i.tree!.size
+                  : 0
               )
             )
           ).reduce((acc, i) => acc + i, 0)
@@ -272,51 +267,41 @@ export default new Command("encrypt")
                 process.exit();
               }
 
-              // Function used to generate a random file name
-              let randomName = () =>
-                crypto
-                  .randomBytes(Math.round(Math.random() * 24 + 8))
+              // Function used to generate file names
+              let randomName = (originalName: string) =>
+                encryption
+                  .encrypt(Buffer.from(originalName.substring(0, 8)))
                   .toString("base64url");
 
-              // Creates the file map
+              // Creates the FileMap object
               let fileMap = new FileMap();
 
-              // Creates the iterator (to iterate through the tree)
-              let iterator = inputItem.tree!.createIterator();
-
-              /**
-               * Recursion function to encrypt all the files
-               * in the directory
-               */
-              let loopThroughDir = async () => {
-                if (iterator.isEnd()) return;
-
-                let item = await iterator.next();
-                if (item.type === "file") {
-                  let newFileName = randomName();
-                  fileMap.addItem(
-                    pathProgram.relative(inputItem.inputPath, item.path),
-                    newFileName
-                  );
-                  await encryption.encryptStream(
-                    fs.createReadStream(item.path),
-                    fs.createWriteStream(
-                      pathProgram.join(inputItem.outputPath, newFileName)
-                    )
-                  );
-                }
-                await loopThroughDir();
-              };
-
-              // Loops through directory
-              await loopThroughDir();
+              await Promise.all(
+                await inputItem.tree!.map(
+                  throat(20, async (item) => {
+                    if (item.type === "file") {
+                      let newFileName = randomName(item.name);
+                      fileMap.addItem(
+                        pathProgram.relative(inputItem.inputPath, item.path),
+                        newFileName
+                      );
+                      await encryption.encryptStream(
+                        fs.createReadStream(item.path),
+                        fs.createWriteStream(
+                          pathProgram.join(inputItem.outputPath, newFileName)
+                        )
+                      );
+                    }
+                  })
+                )
+              );
 
               /**
                * Writes file map in the encrypted directory,
                * its name is encrypted so it can't be recognized
                * among the other encrypted files
                */
-              let mapFileName = encryption
+              let newFileMapName = encryption
                 .encrypt(Buffer.from("fileMap", "utf8"))
                 .toString("base64url");
               fileMap.addItem(
@@ -324,10 +309,10 @@ export default new Command("encrypt")
                   inputItem.inputPath,
                   pathProgram.join(inputItem.inputPath, "fileMap")
                 ),
-                mapFileName
+                newFileMapName
               );
               fsAsync.writeFile(
-                pathProgram.join(inputItem.outputPath, mapFileName),
+                pathProgram.join(inputItem.outputPath, newFileMapName),
                 encryption.encrypt(Buffer.from(JSON.stringify(fileMap.items)))
               );
             } else if (inputItem.type === "file") {
