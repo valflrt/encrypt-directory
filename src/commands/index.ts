@@ -1,7 +1,7 @@
 import program from "../program";
 
 // command imports
-import decryptCMD from "./decrypt";
 import encryptCMD from "./encrypt";
+import decryptCMD from "./decrypt";
 
 program.addCommand(encryptCMD).addCommand(decryptCMD);
