@@ -204,7 +204,7 @@ export default new Command("decrypt")
         }
       };
 
-      logger.info("Validating files...");
+      logger.info("Validating file(s)...");
 
       // checks if every item is valid
       try {
@@ -229,7 +229,7 @@ export default new Command("decrypt")
         ).every((i) => !!i);
         if (!allValid) {
           logger.error(
-            "Invalid files might have been found or the given key is wrong."
+            "Invalid file(s) might have been found or the given key is wrong."
           );
           await clean();
           process.exit();
@@ -238,7 +238,9 @@ export default new Command("decrypt")
         }
       } catch (e) {
         logger.debugOnly.error(e);
-        logger.error("Failed to validate files, key must be wrong.");
+        logger.error(
+          "Failed to validate file(s), key must be wrong or file(s) must be invalid."
+        );
         process.exit();
       }
 

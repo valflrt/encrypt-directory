@@ -280,11 +280,16 @@ export default class Encryption {
           transform(chunk, enc, callback) {
             if (!this.local.iv) {
               this.local.iv = chunk.slice(0, 16);
-              let decipher = crypto.createDecipheriv(
-                algorithm,
-                hashedKey,
-                this.local.iv
-              );
+              let decipher;
+              try {
+                decipher = crypto.createDecipheriv(
+                  algorithm,
+                  hashedKey,
+                  this.local.iv
+                );
+              } catch {
+                return reject();
+              }
 
               this.on("error", reject)
                 .pipe(decipher)
