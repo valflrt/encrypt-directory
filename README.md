@@ -36,15 +36,15 @@ Usage: fencryption [options] [command]
 A simple cli program to encrypt a file/directory
 
 Options:
-  -V, --version                     output the version number
-  --verbose                         enable verbose mode
-  --debug                           enable debug mode
-  -h, --help                        display help for command
+  --verbose                       enable verbose mode
+  --debug                         enable debug mode
+  -v, --version                   show version
+  -h, --help                      display help for command
 
 Commands:
-  encrypt|e [options] <path> <key>  encrypt a file/directory
-  decrypt|d [options] <path> <key>  decrypt an encrypted file/directory
-  help [command]                    display help for command
+  encrypt|e [options] <paths...>  encrypt a file/directory
+  decrypt|d [options] <paths...>  decrypt an encrypted file/directory
+  help [command]                  display help for command
 ```
 
 You can also get help about commands using `fencryption help [command]` or `fencryption [command] --help`
