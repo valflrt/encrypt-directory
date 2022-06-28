@@ -15,7 +15,7 @@ jobs:
           fetch-depth: 1
 
       - name: Build binaries
-        run: npm run build:binaries
+        run: npm run build:bin
 
       - name: Upload release binaries
         uses: alexellis/upload-assets@0.2.2
