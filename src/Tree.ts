@@ -1,5 +1,4 @@
 import fsAsync from "fs/promises";
-import path from "path";
 import pathProgram from "path";
 import throat from "throat";
 
