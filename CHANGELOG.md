@@ -3,7 +3,8 @@
 ## v1.4.7
 
 - Can now encrypt multiple files and directories at once by giving their paths together (`fencryption e path1 path2 ...`)
-- Key is now an option, if not given uses random key (it is given so you can put it in safety)
+- Key is now an option (`-k` / `--key`)
+- If key is not given, the program uses a random key (it is given so you can put it in safety)
 - Now encrypted directories do not keep original structure, the files they contain are put side to side
 - Performances improvements
 
