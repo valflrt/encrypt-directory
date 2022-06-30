@@ -55,9 +55,7 @@ export default class FileMap {
   public async parseAndMap(callback: (value: FileMapItem) => Promise<unknown>) {
     let array: Promise<unknown>[] = [];
     await new Promise<void>((resolve) => {
-      let isFirst = true;
       lineReader.eachLine(this.tmpFilePath, (line, last) => {
-        //if (isFirst) return (isFirst = false);
         let values = line.split(":");
         if (values.length !== 2) return null;
         values[0] = Buffer.from(values[0], "base64url").toString("utf8");
@@ -75,7 +73,6 @@ export default class FileMap {
   public static async new(encryptedFileMapName: string): Promise<FileMap>;
   public static async new(encryptedFileMapName?: string) {
     let tmpPath = (await file()).path;
-    console.log(tmpPath);
     if (encryptedFileMapName)
       await fsPromises.appendFile(
         tmpPath,
