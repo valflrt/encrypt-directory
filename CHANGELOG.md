@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.9
+
+- Performances improvements
+
+[full changelog](https://github.com/valflrt/Fencryption/compare/v1.4.8...v1.4.9)
+
 ## v1.4.8
 
 - Can now encrypt multiple files and directories at once by giving their paths together (`fencryption e path1 path2 ...`)
