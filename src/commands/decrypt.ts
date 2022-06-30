@@ -1,5 +1,4 @@
 import { Command } from "commander";
-
 import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
@@ -8,7 +7,6 @@ import throat from "throat";
 import Encryption from "../Encryption";
 import Tree from "../Tree";
 import FileMap from "../FileMap";
-
 import Logger from "../Logger";
 import Timer from "../Timer";
 
@@ -85,7 +83,10 @@ export default new Command("decrypt")
         process.exit();
       }
 
-      // Loops through given paths and gets information about them
+      /**
+       * Loops through given paths (the cli arguments), runs
+       * some checks and maps them.
+       */
       let inputItems = await Promise.all(
         inputPaths.map(
           async (
@@ -99,7 +100,8 @@ export default new Command("decrypt")
             // Reads current path stats
             let pathStats = await fsAsync.stat(inputPath);
 
-            let humanReadableItemType = pathStats.isFile()
+            // Creates human addressed and readable item type
+            let humanAddressedItemType = pathStats.isFile()
               ? "file"
               : pathStats.isDirectory()
               ? "directory"
@@ -108,7 +110,7 @@ export default new Command("decrypt")
             // Checks if the item exists
             if (!existsSync(inputPath)) {
               logger.error(
-                `This ${humanReadableItemType} doesn't exist.\n(path: ${inputPath})`
+                `This ${humanAddressedItemType} doesn't exist.\n(path: ${inputPath})`
               );
               process.exit();
             }
@@ -136,7 +138,7 @@ export default new Command("decrypt")
                 } catch (e) {
                   logger.debugOnly.error(e);
                   logger.error(
-                    `Failed to overwrite the output ${humanReadableItemType}.\n(path: ${outputPath})`
+                    `Failed to overwrite the output ${humanAddressedItemType}.\n(path: ${outputPath})`
                   );
                 }
               } else {
@@ -153,6 +155,10 @@ export default new Command("decrypt")
               }
             }
 
+            /**
+             * Returns different objects whether the item is
+             * a directory, a file or something else
+             */
             if (pathStats.isDirectory()) {
               return {
                 type: "directory",
@@ -168,7 +174,7 @@ export default new Command("decrypt")
               };
             } else {
               logger.warn(
-                "An item that is neither a file nor directory was found, skipping...\n".concat(
+                "An item that is neither a file nor directory was found, it will be skipped.\n".concat(
                   `(path: ${inputPath})`
                 )
               );
@@ -189,14 +195,12 @@ export default new Command("decrypt")
       let clean = async () => {
         try {
           await Promise.all(
-            inputItems.map(
-              throat(10, async (item) => {
-                await fsAsync.rm(item.outputPath, {
-                  recursive: true,
-                  force: true,
-                });
-              })
-            )
+            inputItems.map(async (i) => {
+              await fsAsync.rm(i.outputPath, {
+                recursive: true,
+                force: true,
+              });
+            })
           );
         } catch (e) {
           logger.debugOnly.error(e);
@@ -210,18 +214,18 @@ export default new Command("decrypt")
       try {
         let allValid = (
           await Promise.all(
-            inputItems.map(async (i) => {
-              if (i.type === "directory") {
+            inputItems.map(async (item) => {
+              if (item.type === "directory") {
                 return (
                   await Promise.all(
-                    await i.tree!.map((i) =>
+                    await item.tree!.map((i) =>
                       encryption.validateStream(fs.createReadStream(i.path))
                     )
                   )
                 ).every((i) => !!i);
               } else {
                 return await encryption.validateStream(
-                  fs.createReadStream(i.inputPath)
+                  fs.createReadStream(item.inputPath)
                 );
               }
             })
@@ -251,8 +255,8 @@ export default new Command("decrypt")
         await Promise.all(
           inputItems.map(async (inputItem) => {
             /**
-             * Check if the item is a directory, a file or
-             * something else
+             * Do something whether the item is a directory,
+             * a file or something else
              */
             if (inputItem.type === "directory") {
               // Creates base directory (typically [name of the dir to encrypt].encrypted)
@@ -264,30 +268,30 @@ export default new Command("decrypt")
                 process.exit();
               }
 
-              // Finds file map
-              let fileMap = (
+              // Finds file map (the encrypted file itself)
+              let fileMapPath = (
                 await Promise.all(
                   await inputItem.tree!.map(
-                    throat(20, async (item) => {
-                      let bufferedName = Buffer.from(item.name, "base64url");
-                      if (
-                        encryption.validate(bufferedName) &&
-                        encryption.decrypt(bufferedName).toString("utf8") ===
+                    throat(60, async (item) => {
+                      let itemName = Buffer.from(item.name, "base64url");
+                      /**
+                       * You might think this is not secure
+                       * because an encrypted file could also
+                       * be named "fileMap", it will be found
+                       * and used as file map, in this case
+                       *  please see `../encrypt.ts` at line
+                       * 286
+                       */
+                      return encryption.validate(itemName) &&
+                        encryption.decrypt(itemName).toString("utf8") ===
                           "fileMap"
-                      ) {
-                        let parsed = FileMap.parse(
-                          encryption
-                            .decrypt(await fsAsync.readFile(item.path))
-                            .toString("utf8")
-                        )?.items;
-                        if (!parsed) return null;
-                        else return parsed;
-                      } else return null;
+                        ? item.path
+                        : undefined;
                     })
                   )
                 )
               ).find((i) => !!i);
-              if (!fileMap) {
+              if (!fileMapPath) {
                 logger.error(
                   "Couldn't decrypt because file map can't be found"
                 );
@@ -295,34 +299,53 @@ export default new Command("decrypt")
               }
 
               /**
-               * Reads file map and decrypt items depending
+               * Creates FileMap object
+               */
+              let fileMap = await FileMap.new();
+              /**
+               * Decrypts file map and write the result in
+               * the temporary file map created when using
+               * FileMap.new();
+               */
+              await encryption.decryptStream(
+                fs.createReadStream(fileMapPath),
+                fs.createWriteStream(fileMap.tmpFilePath)
+              );
+
+              /**
+               * Parses file map and decrypts items depending
                * on it
                */
               await Promise.all(
-                fileMap.map(
-                  throat(20, async ([plain, randomized]) => {
+                await fileMap.parseAndMap(
+                  throat(60, async ([plain, encrypted]) => {
+                    if (plain === "fileMap") return;
                     let newPath = pathProgram.join(inputItem.outputPath, plain);
+                    /**
+                     * Creates directories if necessary
+                     */
                     await fsAsync.mkdir(
                       pathProgram.resolve(pathProgram.dirname(newPath)),
                       {
                         recursive: true,
                       }
                     );
+                    /**
+                     * Decrypts item
+                     */
                     await encryption.decryptStream(
                       fs.createReadStream(
-                        pathProgram.join(inputItem.inputPath, randomized)
+                        pathProgram.join(inputItem.inputPath, encrypted)
                       ),
                       fs.createWriteStream(newPath)
                     );
                   })
                 )
               );
-
-              // Removes file map
-              await fsAsync.rm(
-                pathProgram.join(inputItem.outputPath, "fileMap")
-              );
             } else if (inputItem.type === "file") {
+              /**
+               * Decrypts file
+               */
               await encryption.decryptStream(
                 fs.createReadStream(inputItem.inputPath),
                 fs.createWriteStream(inputItem.outputPath)

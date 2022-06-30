@@ -1,5 +1,4 @@
 import { Command } from "commander";
-
 import fs, { existsSync } from "fs";
 import fsAsync from "fs/promises";
 import pathProgram from "path";
@@ -9,10 +8,8 @@ import Encryption from "../Encryption";
 import Tree from "../Tree";
 import FileSize from "../FileSize";
 import FileMap from "../FileMap";
-
 import Logger from "../Logger";
 import Timer from "../Timer";
-
 import { randomKey } from "../misc";
 
 export default new Command("encrypt")
@@ -99,7 +96,10 @@ export default new Command("encrypt")
         process.exit();
       }
 
-      // Loops through given paths and gets information about them
+      /**
+       * Loops through given paths (the cli arguments), runs
+       * some checks and maps them.
+       */
       let inputItems = await Promise.all(
         inputPaths.map(
           async (
@@ -113,7 +113,8 @@ export default new Command("encrypt")
             // Reads current path stats
             let pathStats = await fsAsync.stat(inputPath);
 
-            let humanReadableItemType = pathStats.isFile()
+            // Creates human addressed and readable item type
+            let humanAddressedItemType = pathStats.isFile()
               ? "file"
               : pathStats.isDirectory()
               ? "directory"
@@ -122,7 +123,7 @@ export default new Command("encrypt")
             // Checks if the item exists
             if (!existsSync(inputPath)) {
               logger.error(
-                `This ${humanReadableItemType} doesn't exist.\n(path: ${inputPath})`
+                `This ${humanAddressedItemType} doesn't exist.\n(path: ${inputPath})`
               );
               process.exit();
             }
@@ -150,7 +151,7 @@ export default new Command("encrypt")
                 } catch (e) {
                   logger.debugOnly.error(e);
                   logger.error(
-                    `Failed to overwrite the output ${humanReadableItemType}.\n(path: ${outputPath})`
+                    `Failed to overwrite the output ${humanAddressedItemType}.\n(path: ${outputPath})`
                   );
                 }
               } else {
@@ -167,6 +168,10 @@ export default new Command("encrypt")
               }
             }
 
+            /**
+             * Returns different objects whether the item is
+             * a directory, a file or something else
+             */
             if (pathStats.isDirectory()) {
               return {
                 type: "directory",
@@ -182,7 +187,7 @@ export default new Command("encrypt")
               };
             } else {
               logger.warn(
-                "An item that is neither a file nor directory was found, skipping...\n".concat(
+                "An item that is neither a file nor directory was found, it will be skipped.\n".concat(
                   `(path: ${inputPath})`
                 )
               );
@@ -203,14 +208,12 @@ export default new Command("encrypt")
       let clean = async () => {
         try {
           await Promise.all(
-            inputItems.map(
-              throat(10, async (i) => {
-                await fsAsync.rm(i.outputPath, {
-                  recursive: true,
-                  force: true,
-                });
-              })
-            )
+            inputItems.map(async (i) => {
+              await fsAsync.rm(i.outputPath, {
+                recursive: true,
+                force: true,
+              });
+            })
           );
         } catch (e) {
           logger.debugOnly.error(e);
@@ -254,8 +257,8 @@ export default new Command("encrypt")
         await Promise.all(
           inputItems.map(async (inputItem) => {
             /**
-             * Check if the item is a directory, a file or
-             * something else
+             * Do something whether the item is a directory,
+             * a file or something else
              */
             if (inputItem.type === "directory") {
               // Creates base directory (typically [name of the dir to encrypt].encrypted)
@@ -267,24 +270,43 @@ export default new Command("encrypt")
                 process.exit();
               }
 
-              // Function used to generate file names
-              let randomName = (originalName: string) =>
-                encryption
-                  .encrypt(Buffer.from(originalName.substring(0, 8)))
-                  .toString("base64url");
+              /**
+               * Creates new file map name by encrypting its
+               * name
+               */
+              let newFileMapName = encryption
+                .encrypt(Buffer.from("fileMap", "utf8"))
+                .toString("base64url");
 
               // Creates the FileMap object
-              let fileMap = new FileMap();
+              let fileMap = await FileMap.new(newFileMapName);
 
+              /**
+               * Encrypts items in the directory
+               */
               await Promise.all(
                 await inputItem.tree!.map(
-                  throat(20, async (item) => {
+                  throat(60, async (item) => {
                     if (item.type === "file") {
-                      let newFileName = randomName(item.name);
-                      fileMap.addItem(
+                      /**
+                       * Encrypts a 6 character substring of
+                       * the original name of the item so
+                       * "fileMap" is unique because 7 character
+                       * long
+                       */
+                      let newFileName = encryption
+                        .encrypt(Buffer.from(item.name.substring(0, 6)))
+                        .toString("base64url");
+                      /**
+                       * Adds item to file map
+                       */
+                      await fileMap.addItem(
                         pathProgram.relative(inputItem.inputPath, item.path),
                         newFileName
                       );
+                      /**
+                       * Encrypts item
+                       */
                       await encryption.encryptStream(
                         fs.createReadStream(item.path),
                         fs.createWriteStream(
@@ -297,25 +319,18 @@ export default new Command("encrypt")
               );
 
               /**
-               * Writes file map in the encrypted directory,
-               * its name is encrypted so it can't be recognized
-               * among the other encrypted files
+               * Encrypts file map
                */
-              let newFileMapName = encryption
-                .encrypt(Buffer.from("fileMap", "utf8"))
-                .toString("base64url");
-              fileMap.addItem(
-                pathProgram.relative(
-                  inputItem.inputPath,
-                  pathProgram.join(inputItem.inputPath, "fileMap")
-                ),
-                newFileMapName
-              );
-              fsAsync.writeFile(
-                pathProgram.join(inputItem.outputPath, newFileMapName),
-                encryption.encrypt(Buffer.from(JSON.stringify(fileMap.items)))
+              await encryption.encryptStream(
+                fileMap.createStream(),
+                fs.createWriteStream(
+                  pathProgram.join(inputItem.outputPath, newFileMapName)
+                )
               );
             } else if (inputItem.type === "file") {
+              /**
+               * Encrypts file
+               */
               await encryption.encryptStream(
                 fs.createReadStream(inputItem.inputPath),
                 fs.createWriteStream(inputItem.outputPath)
