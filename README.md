@@ -51,7 +51,7 @@ You can also get help about commands using `fencryption help [command]` or `fenc
 
 ## Features
 
-- Encrypt and decrypt a file or a directory with the key of your choice (when encrypting a directory, file/directory names are also encrypted)
+- Encrypt and decrypt one or more file-s or a director-y-ies with the key of your choice
 
 ## Development
 
