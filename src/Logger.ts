@@ -3,11 +3,11 @@ import util from "util";
 
 export interface LogMethodsOptions {
   /**
-   * Wether to log or no.
+   * Whether to log or no.
    */
   log?: boolean;
   /**
-   * Wether to show status labels or no.
+   * Whether to show status labels or no.
    */
   showLabels?: boolean;
 }
