@@ -107,7 +107,7 @@ export default class Tree {
         await Promise.all(
           await this.map(
             throat(
-              20,
+              60,
               async (i): Promise<number> => (i.type === "file" ? 1 : 0)
             )
           )
@@ -120,7 +120,7 @@ export default class Tree {
       (
         await Promise.all(
           await this.map(
-            throat(20, async (i) =>
+            throat(60, async (i) =>
               i.type === "file" ? (await fsAsync.stat(i.path)).size : 0
             )
           )
