@@ -48,7 +48,6 @@ export default class FileMap {
 
   /**
    * Parses file map and map through it
-   * @param path Path of the file map to parse
    * @param callback Function that will be executed for every
    * item in the file map
    */
