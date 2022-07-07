@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.10
+
+- Change the way encrypted files are named when encrypting directories (now uses md5 hash)
+- Fix logs
+
+[full changelog](https://github.com/valflrt/Fencryption/compare/v1.4.9...v1.4.10)
+
 ## v1.4.9
 
 - Performances improvements
