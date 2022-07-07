@@ -36,7 +36,7 @@
     ],
     "outputPath": "bin"
   },
-  "description": "A simple cli program to encrypt a file/directory",
+  "description": "A simple cli program to encrypt/decrypt files and directories.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/valflrt/encrypt-directory.git"
