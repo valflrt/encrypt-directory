@@ -9,6 +9,7 @@ import Tree from "../Tree";
 import FileMap from "../FileMap";
 import Logger from "../Logger";
 import Timer from "../Timer";
+import { generateMd5Hash } from "../misc";
 
 export default new Command("decrypt")
   .aliases(["d"])
@@ -41,7 +42,7 @@ export default new Command("decrypt")
 
       if (options.output && rawInputPaths.length > 1) {
         logger.error(
-          "Output path can only be specified when encrypting one item only."
+          "Output path can only be specified when decrypting one item only."
         );
         process.exit();
       }
@@ -250,7 +251,7 @@ export default new Command("decrypt")
 
       logger.info("Decrypting...");
 
-      // Encrypts every given path
+      // Decrypts every given path
       try {
         await Promise.all(
           inputItems.map(async (inputItem) => {
@@ -259,7 +260,7 @@ export default new Command("decrypt")
              * a file or something else
              */
             if (inputItem.type === "directory") {
-              // Creates base directory (typically [name of the dir to encrypt].encrypted)
+              // Creates base directory
               try {
                 await fsAsync.mkdir(inputItem.outputPath);
               } catch (e) {
@@ -269,24 +270,22 @@ export default new Command("decrypt")
               }
 
               // Finds file map (the encrypted file itself)
+              let fileMapMd5Hash = generateMd5Hash(
+                Buffer.from("fileMap")
+              ).toString("base64url");
               let fileMapPath = (
                 await Promise.all(
                   await inputItem.tree!.map(
                     throat(60, async (item) => {
-                      let itemName = Buffer.from(item.name, "base64url");
                       /**
                        * You might think this is not secure
                        * because an encrypted file could also
-                       * be named "fileMap", it will be found
-                       * and used as file map, in this case
-                       *  please see `../encrypt.ts` at line
-                       * 286
+                       * be named "fileMap", the program will
+                       * try to use it as file map, in this
+                       * case please see `../encrypt.ts` at
+                       * line 293
                        */
-                      return encryption.validate(itemName) &&
-                        encryption.decrypt(itemName).toString("utf8") ===
-                          "fileMap"
-                        ? item.path
-                        : undefined;
+                      return item.name === fileMapMd5Hash ? item.path : false;
                     })
                   )
                 )
@@ -318,8 +317,8 @@ export default new Command("decrypt")
                */
               await Promise.all(
                 await fileMap.parseAndMap(
-                  throat(60, async ([plain, encrypted]) => {
-                    if (plain === "fileMap") return;
+                  throat(60, async ([plain, hashed]) => {
+                    if (hashed === fileMapMd5Hash) return;
                     let newPath = pathProgram.join(inputItem.outputPath, plain);
                     /**
                      * Creates directories if necessary
@@ -335,7 +334,7 @@ export default new Command("decrypt")
                      */
                     await encryption.decryptStream(
                       fs.createReadStream(
-                        pathProgram.join(inputItem.inputPath, encrypted)
+                        pathProgram.join(inputItem.inputPath, hashed)
                       ),
                       fs.createWriteStream(newPath)
                     );
@@ -355,7 +354,7 @@ export default new Command("decrypt")
         );
       } catch (e) {
         logger.debugOnly.error(e);
-        logger.error("Error while encrypting.");
+        logger.error("Error while decrypting.");
         await clean();
         process.exit();
       }

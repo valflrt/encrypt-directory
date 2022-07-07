@@ -10,7 +10,7 @@ import FileSize from "../FileSize";
 import FileMap from "../FileMap";
 import Logger from "../Logger";
 import Timer from "../Timer";
-import { randomKey } from "../misc";
+import { generateMd5Hash, randomKey } from "../misc";
 
 export default new Command("encrypt")
   .aliases(["e"])
@@ -261,7 +261,7 @@ export default new Command("encrypt")
              * a file or something else
              */
             if (inputItem.type === "directory") {
-              // Creates base directory (typically [name of the dir to encrypt].encrypted)
+              // Creates base directory
               try {
                 await fsAsync.mkdir(inputItem.outputPath);
               } catch (e) {
@@ -274,9 +274,10 @@ export default new Command("encrypt")
                * Creates new file map name by encrypting its
                * name
                */
-              let newFileMapName = encryption
-                .encrypt(Buffer.from("fileMap", "utf8"))
-                .toString("base64url");
+              let newFileMapName = generateMd5Hash(
+                Buffer.from("fileMap"),
+                "base64url"
+              );
 
               // Creates the FileMap object
               let fileMap = await FileMap.new(newFileMapName);
@@ -289,14 +290,15 @@ export default new Command("encrypt")
                   throat(60, async (item) => {
                     if (item.type === "file") {
                       /**
-                       * Encrypts a 6 character substring of
-                       * the original name of the item so
-                       * "fileMap" is unique because 7 character
-                       * long
+                       * Creates a md5 hash with a 6 characters
+                       * long substring of the item's original
+                       * name so that hashed file map name is
+                       * unique because 7 character long
                        */
-                      let newFileName = encryption
-                        .encrypt(Buffer.from(item.name.substring(0, 6)))
-                        .toString("base64url");
+                      let newFileName = generateMd5Hash(
+                        Buffer.from(item.name.substring(0, 6)),
+                        "base64url"
+                      );
                       /**
                        * Adds item to file map
                        */
