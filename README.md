@@ -21,6 +21,8 @@
 
 A simple cli program to encrypt a directory or a file, made with nodejs and typescript.
 
+**PLEASE BE CAREFUL, I MADE THIS PROGRAM ALONE AND CAN'T GUARANTEE THERE IS NO VULNERABILITY ! USE AT YOUR OWN RISK !**
+
 - [Fencryption](#fencryption)
   - [Usage](#usage)
   - [Features](#features)
