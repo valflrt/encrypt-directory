@@ -5,11 +5,20 @@ import pathProgram from "path";
 import throat from "throat";
 
 import Encryption from "../Encryption";
-import Tree from "../Tree";
 import FileMap from "../FileMap";
 import Logger from "../Logger";
+import { Result } from "../Result";
 import Timer from "../Timer";
-import { generateMd5Hash } from "../misc";
+import Tree from "../Tree";
+
+import {
+  cleanup,
+  generateMd5Hash,
+  getInexistantPaths,
+  Item,
+  makeItem,
+  parsePaths,
+} from "./logic";
 
 export default new Command("decrypt")
   .aliases(["d"])
@@ -51,22 +60,14 @@ export default new Command("decrypt")
       let encryption = new Encryption(options.key);
 
       // Resolves the given raw paths
-      let inputPaths = rawInputPaths.map((rawInputPath) => {
-        let resolvedPath: string;
-        try {
-          resolvedPath = pathProgram.resolve(rawInputPath);
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error(`Invalid input path`);
-          process.exit();
-        }
-        return resolvedPath;
-      });
+      let inputPaths = parsePaths(...rawInputPaths).tryToUnpack((e) => {
+        logger.debugOnly.error(e);
+        logger.error(`Invalid input path`);
+        process.exit();
+      })!;
 
       // Checks if all the items exist
-      let inexistantPaths = inputPaths.filter(
-        (inputPath) => !existsSync(inputPath)
-      );
+      let inexistantPaths = getInexistantPaths(...inputPaths);
       if (inexistantPaths.length !== 0) {
         logger.error(
           inexistantPaths.length === 1
@@ -88,7 +89,7 @@ export default new Command("decrypt")
        * Loops through given paths (the cli arguments), runs
        * some checks and maps them.
        */
-      let inputItems = await Promise.all(
+      let inputItems: Item[] = await Promise.all(
         inputPaths.map(
           async (
             inputPath
@@ -117,31 +118,32 @@ export default new Command("decrypt")
             }
 
             // Creates output path
-            let outputPath: string;
-            try {
-              outputPath =
+            let outputPath = new Result<string>((resolve) =>
+              resolve(
                 options.output && rawInputPaths.length <= 1
                   ? pathProgram.resolve(options.output)
-                  : inputPath.replace(".encrypted", "").concat(".decrypted");
-            } catch (e) {
+                  : inputPath.replace(".encrypted", "").concat(".decrypted")
+              )
+            ).tryToUnpack((e) => {
               logger.debugOnly.error(e);
               logger.error("Failed to resolve given output path.");
               process.exit();
-            }
-            // Checks if the "encrypted" item already exists
+            })!;
+
+            // Checks if the "decrypted" item already exists
             if (existsSync(outputPath)) {
               if (options.force) {
-                try {
-                  await fsAsync.rm(outputPath, {
+                await fsAsync
+                  .rm(outputPath, {
                     force: true,
                     recursive: true,
+                  })
+                  .catch((e) => {
+                    logger.debugOnly.error(e);
+                    logger.error(
+                      `Failed to overwrite the output ${humanAddressedItemType}.\n(path: ${outputPath})`
+                    );
                   });
-                } catch (e) {
-                  logger.debugOnly.error(e);
-                  logger.error(
-                    `Failed to overwrite the output ${humanAddressedItemType}.\n(path: ${outputPath})`
-                  );
-                }
               } else {
                 logger.error(
                   `The output ${
@@ -160,54 +162,18 @@ export default new Command("decrypt")
              * Returns different objects whether the item is
              * a directory, a file or something else
              */
-            if (pathStats.isDirectory()) {
-              return {
-                type: "directory",
-                inputPath,
-                outputPath,
-                tree: new Tree(inputPath),
-              };
-            } else if (pathStats.isFile()) {
-              return {
-                type: "file",
-                inputPath,
-                outputPath,
-              };
-            } else {
+            let item = makeItem(pathStats, inputPath, outputPath);
+            if (item.type === "unknown") {
               logger.warn(
                 "An item that is neither a file nor directory was found, it will be skipped.\n".concat(
                   `(path: ${inputPath})`
                 )
               );
-              return {
-                type: "unknown",
-                inputPath,
-                outputPath,
-              };
             }
+            return item;
           }
         )
       );
-
-      /**
-       * A function to clean, to remove files/directories
-       * that were created in case of error when decrypting
-       */
-      let clean = async () => {
-        try {
-          await Promise.all(
-            inputItems.map(async (i) => {
-              await fsAsync.rm(i.outputPath, {
-                recursive: true,
-                force: true,
-              });
-            })
-          );
-        } catch (e) {
-          logger.debugOnly.error(e);
-          logger.error("Failed to clean up.");
-        }
-      };
 
       logger.info("Validating file(s)...");
 
@@ -236,7 +202,7 @@ export default new Command("decrypt")
           logger.error(
             "Invalid file(s) might have been found or the given key is wrong."
           );
-          await clean();
+          await cleanup(...inputItems);
           process.exit();
         } else {
           logger.success("All files are valid.");
@@ -261,13 +227,11 @@ export default new Command("decrypt")
              */
             if (inputItem.type === "directory") {
               // Creates base directory
-              try {
-                await fsAsync.mkdir(inputItem.outputPath);
-              } catch (e) {
+              await fsAsync.mkdir(inputItem.outputPath).catch((e) => {
                 logger.debugOnly.error(e);
                 logger.error("Failed to create base directory.");
                 process.exit();
-              }
+              });
 
               // Finds file map (the encrypted file itself)
               let fileMapMd5Hash = generateMd5Hash(
@@ -283,7 +247,7 @@ export default new Command("decrypt")
                        * be named "fileMap", the program will
                        * try to use it as file map, in this
                        * case please see `../encrypt.ts` at
-                       * line 293
+                       * line 257
                        */
                       return item.name === fileMapMd5Hash ? item.path : false;
                     })
@@ -355,7 +319,7 @@ export default new Command("decrypt")
       } catch (e) {
         logger.debugOnly.error(e);
         logger.error("Error while decrypting.");
-        await clean();
+        await cleanup(...inputItems);
         process.exit();
       }
     } catch (e) {
