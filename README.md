@@ -21,6 +21,8 @@
 
 A simple cli program to encrypt a directory or a file, made with nodejs and typescript.
 
+**This program has been deprecated, a [new version](https://github.com/valflrt/fencryption-rust) (in Rust) is in construction...**
+
 **PLEASE BE CAREFUL, I CAN'T GUARANTEE THERE IS NO VULNERABILITY IN THIS PROGRAM ! USE AT YOUR OWN RISK !**
 
 - [Fencryption](#fencryption)
